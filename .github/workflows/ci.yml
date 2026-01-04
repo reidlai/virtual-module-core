@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: |
+          npm install
+          pip install pytm semgrep detect-secrets
+
+      # Stage 1: SCA
+      - name: SCA - NPM Audit
+        run: npm audit --production
+        continue-on-error: true
+
+      # Stage 2: Linting & Formatting
+      - name: Lint - Prettier
+        run: npx prettier --check .
+        continue-on-error: true
+
+      # Stage 3: Code Quality
+      - name: Quality - ESLint
+        run: npm run lint
+
+      # Stage 4: Unit Tests
+      - name: Test - Unit Tests
+        run: npm test
+
+      # Stage 5: SAST
+      - name: SAST - Semgrep
+        run: semgrep --config=p/security-audit --error .
+        continue-on-error: true
+
+      - name: SAST - Detect Secrets
+        run: detect-secrets scan --baseline .secrets.baseline
+        continue-on-error: true
+
+      # Stage 6: Threat Modeling
+      - name: Threat Model - PyTM
+        run: python3 threat_modelling/tm.py --seq
