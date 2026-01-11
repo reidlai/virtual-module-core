@@ -1,6 +1,6 @@
 {
   "name": "virtual-module-core",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Core module system with DI container, module registry, and TypeScript interfaces",
   "type": "module",
   "main": "./dist/index.js",
