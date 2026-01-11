@@ -153,8 +153,8 @@ export const init: ModuleInit = async (context) => {
   // - Dynamic: ./routes/blog/[slug]/+page.svelte -> /blog/[slug]
   // - Sub-path Dynamic: ./routes/shop/[category]/[item]/+page.svelte -> /shop/[category]/[item]
   // - Catch-all: ./routes/[...rest]/+page.svelte -> /[...rest]
-  const modules = import.meta.glob('./routes/**/+page.svelte', { eager: true });
-  const bundle = await adapter.parse(modules);
+  const routes = import.meta.glob('./routes/**/+*.{svelte,ts}', { eager: true });
+  const bundle = await adapter.parse(routes);
   bundle.id = "[module_name]";
   bundle.services = {
     <module_name>Service: <module_name>Service,
