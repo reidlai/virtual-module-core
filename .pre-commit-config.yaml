@@ -59,7 +59,7 @@ repos:
         name: Semgrep (SAST Polyglot)
         entry: semgrep --config=p/security-audit --error
         language: python
-        additional_dependencies: ['semgrep']
+        additional_dependencies: ["semgrep"]
         pass_filenames: false
 
       # Stage 6: Threat Modelling
@@ -74,5 +74,5 @@ repos:
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        args: ['--baseline', '.secrets.baseline']
-        exclude: package.json|pnpm-lock.yaml|package-lock.json
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: package.json|pnpm-lock.yaml|package-lock.json|.*\.tsbuildinfo

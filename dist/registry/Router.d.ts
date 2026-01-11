@@ -1,21 +1,15 @@
-import { Registry } from "./Registry.js";
-import type { IParamsRoute } from "../types/index.js";
-export interface RouteMatch {
-    route: IParamsRoute;
-    params: Record<string, string>;
-}
+import type { IParamsRoute, RouteMatch } from '../types';
 export declare class Router {
-    private registry;
-    constructor(registry: Registry);
-    /**
-     * Matches a URL path against registered module routes.
-     * Supports basic parameter segments (e.g., /users/:id).
-     */
+    private routes;
+    register(routes: IParamsRoute[]): void;
     match(path: string): RouteMatch | null;
+    private parseRoute;
     /**
-     * Simple path matcher.
-     * Returns params object on match, null on no match.
+     * Sorts routes by specificity:
+     * Static > Dynamic > Optional > Wildcard
      */
-    private matchPath;
+    private sortRoutes;
+    private matchSegments;
+    private resolveLayouts;
 }
 //# sourceMappingURL=Router.d.ts.map
