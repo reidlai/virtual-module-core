@@ -1,16 +1,9 @@
-export { DIContainer } from './di/Container.js';
-export { Registry } from './registry/Registry.js';
-export { Router } from './registry/Router.js';
-export type { RouteMatch } from './registry/Router.js';
-
+export { Router } from "./registry/Router";
+export { Registry } from "./registry/Registry";
+export { SvelteKitAdapter } from "./adapters/SvelteKitAdapter";
 export type {
-  IAppConfig,
-  IContext,
   IParamsRoute,
-  IWidget,
-  IHandler,
-  IModuleBundle,
-  ModuleInit,
-  IThemeConfig,
-  IModuleState,
-} from './types/index.js';
+  RouteMatch,
+  RouteType,
+  IFrameworkAdapter,
+} from "./types";

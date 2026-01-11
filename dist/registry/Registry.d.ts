@@ -1,22 +1,19 @@
-import type { IModuleBundle, IWidget, IHandler } from "../types/index.js";
+import type { IFrameworkAdapter } from '../types';
+import { Router } from './Router';
 export declare class Registry {
-    private static instance;
-    private modules;
-    private widgetMap;
-    private handlers;
-    private servicesMap;
-    private stateStores;
-    private constructor();
-    static getInstance(): Registry;
-    register(bundle: IModuleBundle): void;
-    getModules(): IModuleBundle[];
-    getModule(id: string): IModuleBundle | undefined;
-    getWidget(id: string): IWidget | undefined;
-    getWidgets(): IWidget[];
-    getHandlers(): IHandler[];
-    getService<T = any>(id: string): T;
-    clear(): void;
-    getRoute(path: string): any | undefined;
-    getStateStore(id: string): any;
+    private router;
+    private registeredPaths;
+    constructor();
+    /**
+     * Registers a module using the provided adapter.
+     * @param module The module object/metadata to register
+     * @param adapter The adapter specific to the module's framework
+        * @throws Error if any route path is already registered (Conflict Detection)
+     */
+    registerModule(module: any, adapter: IFrameworkAdapter): Promise<void>;
+    /**
+     * Expose router for matching
+     */
+    getRouter(): Router;
 }
 //# sourceMappingURL=Registry.d.ts.map

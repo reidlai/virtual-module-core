@@ -1,106 +1,38 @@
+import { Router } from './Router';
 export class Registry {
-    static instance;
-    modules = new Map();
-    // Flattened registries for easy access
-    widgetMap = new Map();
-    handlers = [];
-    servicesMap = new Map();
-    stateStores = new Map();
-    constructor() { }
-    static getInstance() {
-        if (!Registry.instance) {
-            Registry.instance = new Registry();
-        }
-        return Registry.instance;
+    router;
+    registeredPaths;
+    constructor() {
+        this.router = new Router();
+        this.registeredPaths = new Set();
     }
-    register(bundle) {
-        if (this.modules.has(bundle.id)) {
-            console.warn(`[Registry] Module '${bundle.id}' is already registered. Skipping.`);
-            return;
+    /**
+     * Registers a module using the provided adapter.
+     * @param module The module object/metadata to register
+     * @param adapter The adapter specific to the module's framework
+        * @throws Error if any route path is already registered (Conflict Detection)
+     */
+    async registerModule(module, adapter) {
+        if (!adapter.detect(module)) {
+            throw new Error('Adapter failed to detect compatible module');
         }
-        console.log(`[Registry] Registered module: ${bundle.id}`);
-        this.modules.set(bundle.id, bundle);
-        // Auto-register widgets
-        if (bundle.widgets) {
-            for (const widget of bundle.widgets) {
-                if (this.widgetMap.has(widget.id)) {
-                    console.warn(`[Registry] Duplicate widget ID found: ${widget.id}. Skipping registration.`);
-                    continue;
-                }
-                this.widgetMap.set(widget.id, widget);
+        const routes = await adapter.parse(module);
+        // Conflict Detection Phase
+        for (const route of routes) {
+            if (this.registeredPaths.has(route.path)) {
+                throw new Error(`Duplicate route detected: ${route.path}. Routes must be unique across all modules.`);
             }
         }
-        // Auto-register handlers
-        if (bundle.handlers) {
-            this.handlers.push(...bundle.handlers);
+        // Registration Phase
+        for (const route of routes) {
+            this.registeredPaths.add(route.path);
         }
-        // Auto-register services
-        if (bundle.services) {
-            for (const [key, service] of Object.entries(bundle.services)) {
-                this.servicesMap.set(key, service);
-            }
-        }
+        this.router.register(routes);
     }
-    getModules() {
-        return Array.from(this.modules.values());
-    }
-    getModule(id) {
-        return this.modules.get(id);
-    }
-    getWidget(id) {
-        return this.widgetMap.get(id);
-    }
-    getWidgets() {
-        return Array.from(this.widgetMap.values());
-    }
-    getHandlers() {
-        return this.handlers;
-    }
-    getService(id) {
-        return this.servicesMap.get(id);
-    }
-    clear() {
-        this.modules.clear();
-        this.servicesMap.clear();
-        this.widgetMap.clear();
-        this.handlers = [];
-        this.stateStores.clear();
-    }
-    // Routing Support
-    getRoute(path) {
-        for (const bundle of this.modules.values()) {
-            if (bundle.routes) {
-                for (const route of bundle.routes) {
-                    // Simple exact match or startsWith for sub-routes
-                    if (route.path === path || path.startsWith(route.path + "/")) {
-                        return route.component;
-                    }
-                }
-            }
-        }
-        return undefined;
-    }
-    // State Store Support (Mock/Simple implementation)
-    getStateStore(id) {
-        if (!this.stateStores.has(id)) {
-            // Best effort: Return a mock ModuleStateStore object
-            this.stateStores.set(id, {
-                subscribe: () => { },
-                set: () => { },
-                update: () => { },
-                getChannel: (_key, initial) => {
-                    return {
-                        subscribe: (run) => {
-                            run(initial);
-                            return () => { };
-                        },
-                    };
-                },
-                updateState: (key, val, src) => {
-                    console.log(`[MockStore] Update ${key}:`, val, src);
-                },
-            });
-        }
-        return this.stateStores.get(id);
+    /**
+     * Expose router for matching
+     */
+    getRouter() {
+        return this.router;
     }
 }

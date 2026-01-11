@@ -1,60 +1,76 @@
+export type RouteType = "page" | "layout" | "error" | "api" | "other";
+
+/**
+ * The canonical representation of a route in the Core system.
+ * Framework-specific routes are normalized to this schema.
+ */
+export interface IParamsRoute {
+  path: string;
+  type?: RouteType;
+  component: any;
+  metadata?: Record<string, any>;
+}
+
+export interface RouteMatch {
+  route: IParamsRoute;
+  params: Record<string, string>;
+  layouts: IParamsRoute[];
+}
+
+/**
+ * Application Configuration (Generic)
+ */
 export interface IAppConfig {
   [key: string]: any;
 }
 
+/**
+ * Dependency Injection Context
+ */
 export interface IContext {
   config: IAppConfig;
   register(key: string, service: any): void;
   getService<T>(key: string): T;
 }
 
-export interface IParamsRoute {
-  path: string;
-  component: any;
-}
-
+/**
+ * UI Widget Definition
+ */
 export interface IWidget {
   id: string;
   title: string;
-  description?: string;
-  icon?: string;
-  /** The actual Svelte component constructor/class */
-  component: any;
-  /** Suggested location: 'dashboard', 'sidebar', 'header' */
-  location?: string;
-  /** Size hint: 'small', 'medium', 'large' */
+  component: any; // Svelte component
+  location?: string; // 'dashboard', 'sidebar', 'header'
   size?: "small" | "medium" | "large";
-  props?: Record<string, any>;
 }
 
+/**
+ * Background/Command Handler Definition
+ */
 export interface IHandler {
   id: string;
   title: string;
-  icon?: string;
   execute: (context: IContext) => void | Promise<void>;
 }
 
+/**
+ * Represents a complete Virtual Module Bundle.
+ */
 export interface IModuleBundle {
   id: string;
-  /** Defines usage of dynamic widgets (Dashboard tiles, etc.) */
   widgets?: IWidget[];
-  /** Optional imperative handlers (e.g. for menu actions) */
   handlers?: IHandler[];
   services?: Record<string, any>;
   routes?: IParamsRoute[];
+  metadata?: Record<string, any>;
 }
 
 export type ModuleInit = (context: IContext) => Promise<IModuleBundle>;
 
-export interface IThemeConfig {
-  mode: "light" | "dark" | "system";
-  primary?: string;
-  primaryColor?: string;
-  radius?: number;
-  style?: string;
+/**
+ * Contract for transforming module code into Standard Schema.
+ */
+export interface IFrameworkAdapter {
+  detect(module: any): boolean;
+  parse(module: any): Promise<IModuleBundle>;
 }
-
-export interface IModuleState {
-  [key: string]: any;
-}
-

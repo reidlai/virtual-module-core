@@ -1,93 +1,93 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { Router } from "./Router";
-import { Registry } from "./Registry";
-import type { IModuleBundle, IParamsRoute } from "../types";
+import type { IParamsRoute } from "../types";
 
 describe("Router", () => {
-    let router: Router;
-    let registry: Registry;
+  let router: Router;
 
-    beforeEach(() => {
-        registry = Registry.getInstance();
-        registry.clear();
-        router = new Router(registry);
+  beforeEach(() => {
+    router = new Router();
+  });
+
+  describe("register & sort", () => {
+    it("should match static routes", () => {
+      const staticRoute: IParamsRoute = {
+        path: "/blog",
+        component: {},
+        type: "page",
+      };
+      router.register([staticRoute]);
+
+      expect(router.match("/blog")?.route).toBe(staticRoute);
+      expect(router.match("/blog/other")).toBeNull();
     });
 
-    it("should return null if no routes match", () => {
-        const match = router.match("/unknown");
-        expect(match).toBeNull();
+    it("should sort specificity: static > dynamic > optional > wildcard", () => {
+      const routes: IParamsRoute[] = [
+        { path: "/*", component: "wildcard", type: "page" },
+        { path: "/blog/:slug", component: "dynamic", type: "page" },
+        { path: "/blog/featured", component: "static", type: "page" },
+        { path: "/blog/:slug?", component: "optional", type: "page" },
+      ];
+
+      router.register(routes);
+
+      // Static wins
+      expect(router.match("/blog/featured")?.route.component).toBe("static");
+
+      // Dynamic wins over optional/wildcard
+      expect(router.match("/blog/hello")?.route.component).toBe("dynamic");
+
+      // Optional wins over wildcard
+      expect(router.match("/blog")?.route.component).toBe("optional");
+
+      // Wildcard catches rest
+      expect(router.match("/other/stuff")?.route.component).toBe("wildcard");
+    });
+  });
+
+  describe("match parameters", () => {
+    it("should extract dynamic parameters", () => {
+      router.register([
+        { path: "/users/:id/posts/:postId", component: {}, type: "page" },
+      ]);
+
+      const match = router.match("/users/123/posts/456");
+      expect(match?.params).toEqual({ id: "123", postId: "456" });
     });
 
-    it("should match an exact route", () => {
-        const route: IParamsRoute = {
-            path: "/dashboard",
-            component: "DashboardComponent",
-        };
-        const bundle: IModuleBundle = {
-            id: "mod1",
-            routes: [route],
-        };
-        registry.register(bundle);
+    it("should handle optional parameters", () => {
+      router.register([{ path: "/lang/:code?", component: {}, type: "page" }]);
 
-        const match = router.match("/dashboard");
-        expect(match).not.toBeNull();
-        expect(match?.route).toBe(route);
-        expect(match?.params).toEqual({});
+      expect(router.match("/lang/en")?.params).toEqual({ code: "en" });
+      expect(router.match("/lang")?.params).toEqual({}); // Empty if missing
     });
+  });
 
-    it("should match a route with parameters", () => {
-        const route: IParamsRoute = {
-            path: "/users/:id",
-            component: "UserComponent",
-        };
-        const bundle: IModuleBundle = {
-            id: "mod2",
-            routes: [route],
-        };
-        registry.register(bundle);
+  describe("layout resolution", () => {
+    it("should resolve layout hierarchy", () => {
+      const rootLayout = {
+        path: "/",
+        component: "root",
+        type: "layout",
+      } as IParamsRoute;
+      const blogLayout = {
+        path: "/blog",
+        component: "blog",
+        type: "layout",
+      } as IParamsRoute;
+      const postPage = {
+        path: "/blog/:id",
+        component: "page",
+        type: "page",
+      } as IParamsRoute;
 
-        const match = router.match("/users/123");
-        expect(match).not.toBeNull();
-        expect(match?.route).toBe(route);
-        expect(match?.params).toEqual({ id: "123" });
+      router.register([rootLayout, blogLayout, postPage]);
+
+      const match = router.match("/blog/123");
+      expect(match?.layouts).toHaveLength(2);
+      expect(match?.layouts[0]).toBe(rootLayout);
+      expect(match?.layouts[1]).toBe(blogLayout);
     });
-
-    it("should match multiple parameters", () => {
-        const route: IParamsRoute = {
-            path: "/posts/:postId/comments/:commentId",
-            component: "CommentComponent",
-        };
-        const bundle: IModuleBundle = {
-            id: "mod3",
-            routes: [route],
-        };
-        registry.register(bundle);
-
-        const match = router.match("/posts/abc/comments/def");
-        expect(match).not.toBeNull();
-        expect(match?.params).toEqual({ postId: "abc", commentId: "def" });
-    });
-
-    it("should fail gracefully on partial match mismatch", () => {
-        const route: IParamsRoute = {
-            path: "/users/:id/details",
-            component: "DetailComponent",
-        };
-        registry.register({ id: "mod4", routes: [route] });
-
-        // Length matches, but static part mismatch
-        const match = router.match("/users/123/settings");
-        expect(match).toBeNull();
-    });
-
-    it("should fail gracefully on length mismatch", () => {
-        const route: IParamsRoute = {
-            path: "/a/b",
-            component: "Comp",
-        };
-        registry.register({ id: "mod5", routes: [route] });
-
-        expect(router.match("/a")).toBeNull();
-        expect(router.match("/a/b/c")).toBeNull();
-    });
+  });
 });
