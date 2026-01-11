@@ -132,6 +132,7 @@ export type ModuleInit = (context: IContext) => Promise<IModuleBundle>;
 ```typescript
 // modules/[module_name]/sveltekit/src/index.ts
 import WidgetComponent from "$lib/widgets/WidgetComponent.svelte";
+import { <module_name>Service } from "@modules/<module_name>-ts";
 
 // SvelteKit 2: Auto-discover routes (pages, layouts, errors)
 // This glob pattern captures all nested routes within src/routes
@@ -152,35 +153,25 @@ export const init: ModuleInit = async (context) => {
   // - Dynamic: ./routes/blog/[slug]/+page.svelte -> /blog/[slug]
   // - Sub-path Dynamic: ./routes/shop/[category]/[item]/+page.svelte -> /shop/[category]/[item]
   // - Catch-all: ./routes/[...rest]/+page.svelte -> /[...rest]
-  const routes = Object.entries(routeFiles).map(
-    ([path, mod]: [string, any]) => {
-      // Determine type (page, layout, error) from filename
-      const type = path.split("/").pop()?.split(".")[0].replace("+", "");
-
-      return {
-        // Strip local path and filename to get the route key
-        // Example: "./routes/settings/profile/+page.svelte" -> "/settings/profile"
-        path: path.replace("./routes", "").replace(/\/\+.*\.(svelte)$/, ""),
-        component: mod.default,
-        type,
-      };
-    },
-  );
-
-  return {
-    id: "[module_name]",
-    widgets: [
-      {
-        id: "widget-id",
-        title: "Widget Title",
-        component: WidgetComponent,
-        location: "dashboard",
-        size: "small",
-      },
-    ],
-    routes,
+  const routes = import.meta.glob('./routes/**/+*.{svelte,ts}', { eager: true });
+  const bundle = await adapter.parse(routes);
+  bundle.id = "[module_name]";
+  bundle.services = {
+    <module_name>Service: <module_name>Service,
   };
+  bundle.widgets = [
+    {
+      id: "widget-id",
+      title: "Widget Title",
+      component: WidgetComponent,
+      location: "dashboard",
+      size: "small",
+    },
+  ];
+  return bundle;
 };
+
+  
 ```
 
 ### Widget Navigation
