@@ -1,20 +1,20 @@
 # AppShell Architecture
 
-This document describes the **AppShell Architecture** used in the ta-workspace monorepo. It covers both frontend (SvelteKit) and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
+This document describes the **AppShell Architecture** which covers frontend (SvelteKit), state management (RxJS) and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
 
 ## Overview
 
-The AppShell pattern provides a **host application** that loads and orchestrates feature modules at runtime. This enables:
+The AppShell pattern provides a **host application** that loads and orchestrates virtual (feature) modules at runtime. This enables:
 
-- **Modularity**: Features are developed independently in `modules/`
+- **Modularity**: Virtual modules are developed independently in `modules/` or as GitHub submodules
 - **Composition**: Apps in `apps/` compose modules as needed
 - **Shared Core**: Common types and utilities provided by `virtual-module-core` package
 
 ```mermaid
 flowchart TD
     subgraph Apps["apps/"]
-        SV[sv-appshell<br/>SvelteKit Frontend]
-        TA[ta-server<br/>Go Backend]
+        SV[sveltekit-appshell<br/>SvelteKit Frontend]
+        TA[go-server<br/>Go Backend]
     end
 
     subgraph Modules["modules/"]
@@ -34,16 +34,46 @@ flowchart TD
     TA -->|imports| WL
     TA -->|imports| PF
 ```
+---
+
+## Core Architectural Principles
+
+The AppShell Architecture is built upon **SOLID principles** and **Dependency Injection (DI)** to ensure a decoupled, maintainable, and extensible system.
+
+### SOLID Principles
+
+| Principle                 | Application in AppShell                                                                                                                                                             |
+| :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **S**ingle Responsibility | Each **Virtual Module** focuses on a specific business domain (e.g., Portfolio, Watchlist), while the **AppShell** focuses solely on orchestration and common infra.                |
+| **O**pen/Closed           | The **AppShell** is **open for extension** (it can load any number of new modules at runtime) but **closed for modification** (the core shell code doesn't change to add features). |
+| **L**iskov Substitution   | Every module must satisfy the `IModuleBundle` interface. The Shell handles any object that implements this interface without needing to know the concrete module type.              |
+| **I**nterface Segregation | Consumers only depend on specific, small interfaces like `IWidget`, `IHandler`, or `IStore`, preventing modules from being forced to implement unnecessary logic.                   |
+| **D**ependency Inversion  | High-level AppShell logic depends on **abstractions** (interfaces in `virtual-module-core`) rather than concrete implementations of feature modules.                                |
+
+### Dependency Injection (DI)
+
+Dependency Injection is the mechanism used to provide a module's dependencies at runtime, rather than hard-coding them.
+
+#### Frontend DI (Registry)
+In the SvelteKit frontend, the **`Registry`** acts as a lightweight DI container.
+- **Provider**: Modules "provide" their services, widgets, and handlers by registering them with the Registry during the `init` phase.
+- **Consumer**: Components or other services "inject" these dependencies by requesting them from the Registry (e.g., `registry.getService('PortfolioService')`).
+- **Benefit**: This allows us to swap a "real" service with a "mock" service in testing or development without changing the consuming component.
+
+#### Backend DI (Go/Goa)
+In the Go backend, DI is handled during the server startup:
+- **Service Wiring**: The `api-server.go` (or a dedicated DI package) instantiates the concrete service implementations and passes them into the Goa-generated endpoints.
+- **Decoupling**: The transport layer (HTTP/gRPC) is decoupled from the business logic, making it easy to test services in isolation using mock database clients or secondary services.
 
 ---
 
-## Frontend AppShell (sv-appshell)
+## Frontend AppShell (sveltekit-appshell)
 
 The SvelteKit frontend uses a **Registry** singleton and **ModuleLoader** to dynamically discover and load modules.
 
 ### Module Discovery
 
-[ModuleLoader.ts](file:///c:/Users/reidl/GitLocal/ta-workspace/apps/sv-appshell/src/lib/loader/ModuleLoader.ts) uses Vite's `import.meta.glob` to discover modules:
+[ModuleLoader.ts](file:///c:/Users/reidl/GitLocal/ta-workspace/apps/sveltekit-appshell/src/lib/loader/ModuleLoader.ts) uses Vite's `import.meta.glob` to discover modules:
 
 ```typescript
 // Glob pattern discovers all module entry points
@@ -57,8 +87,11 @@ static async loadModules(context: IContext, config: IAppConfig[]): Promise<void>
         );
         if (matchedKey) {
             const module = await this.moduleGlob[matchedKey]();
-            const bundle = await module.init(context);
-            registry.register(bundle);
+            const initFn = module.init || (module.default && module.default.init);
+            if (typeof initFn === 'function') {
+                const bundle = await initFn(context);
+                registry.register(bundle);
+            }
         }
     }
 }
@@ -127,6 +160,34 @@ export interface IHandler {
 export type ModuleInit = (context: IContext) => Promise<IModuleBundle>;
 ```
 
+---
+
+## Module Injection Lifecycle
+
+The AppShell orchestrates the lifecycle of a module from discovery to runtime integration.
+
+### 1. Discovery Phase (Vite)
+The `ModuleLoader` uses Vite's `import.meta.glob` to scan the `modules/` directory for entry points (`index.ts`). This is a static analysis phase where Vite creates a mapping of paths to dynamic import functions.
+
+### 2. Initialization Phase
+For each enabled module, the shell calls its `init(context)` function.
+- **`IContext`**: The shell passes a context object containing shared resources (logger, global config, adapter).
+- **Module Autonomy**: The module is responsible for its own internal discovery (e.g., using its own `import.meta.glob` to find its Svelte routes or widgets).
+
+### 3. Registration Phase
+The module returns an `IModuleBundle`, which the shell passes to the **`Registry`**.
+- The `Registry` stores the bundle and maps its components (widgets by ID, routes by path).
+- Services are added to the Registry's internal dependency container.
+
+### 4. Runtime Integration
+The Shell UI components (Sidebar, Dashboard, Router) are "registry-aware":
+- **Sidebar**: Queries the Registry for all registered `IHandler` items to build the navigation menu.
+- **Dashboard**: Iterates through `IWidget` items with `location: 'dashboard'` to render tiles.
+- **Router**: The catch-all route `[...rest]/+page.svelte` matches the current URL against the Registry's route map to render the correct module page.
+
+---
+```
+
 ### Example: Registering a Widget
 
 ```typescript
@@ -192,7 +253,7 @@ Routes defined in `IModuleBundle.routes` are matched by the Registry's `getRoute
 
 ---
 
-## Backend AppShell (ta-server)
+## Backend AppShell (go-server)
 
 The Go backend uses the **Goa framework** with service injection from virtual modules.
 
@@ -249,7 +310,7 @@ var _ = ai.Agent("ta-assistant", func() {
 ```mermaid
 flowchart LR
     subgraph Apps["apps/"]
-        API[ta-server<br/>REST API]
+        API[go-server<br/>REST API]
         MCP[mcp-server<br/>AI Tools]
     end
 
@@ -292,7 +353,7 @@ var _ = Service("portfolio", func() {
 
 ### Service Injection
 
-[api-server.go](file:///c:/Users/reidl/GitLocal/ta-workspace/apps/ta-server/cmd/api-server.go) wires module services:
+[api-server.go](file:///home/reidlai/GitLocal/ta-workspace/apps/go-server/cmd/api-server.go) wires module services:
 
 ```go
 // Import module implementations
@@ -301,53 +362,96 @@ import (
     watchlist "github.com/reidlai/ta-workspace/modules/watchlist/go/pkg"
 )
 
-// Initialize services
-watchlistSvc = watchlist.NewWatchlist(logger)
-portfolioSvc = portfolio.NewPortfolio(logger)
-
-// Create endpoints
-watchlistEndpoints = watchlistGen.NewEndpoints(watchlistSvc)
-portfolioEndpoints = portfolioGen.NewEndpoints(portfolioSvc)
+// Initialize services via DI container
+services := di.NewServices(logger)
+watchlistEndpoints := services.WatchlistEndpoints
+portfolioEndpoints := services.PortfolioEndpoints
 
 // Mount on HTTP server
-server.HandleHTTPServer(ctx, u, watchlistEndpoints, portfolioEndpoints, ...)
+HandleHTTPServer(ctx, u, watchlistEndpoints, portfolioEndpoints, ...)
 ```
 
 ---
 
-## RxJS + Svelte Store Integration
+## RxJS as a Decoupling Layer
 
-RxJS `BehaviorSubject` integrates seamlessly with Svelte's store contract:
+RxJS services (in `modules/*/ts`) act as the **source of truth** and a decoupling layer between the backend API and the SvelteKit frontend.
+
+### Benefits of the RxJS Layer
+
+1.  **Transport Independence**: UI components never interact with `fetch`, `axios`, or specific API clients. They only subscribe to Observables (`tickers$`, `error$`). This allows swapping HTTP for WebSockets or gRPC-web without changing a single Svelte component.
+2.  **State Persistence**: Since the RxJS service is a singleton (often held in the Registry), state persists across navigation. Moving from `/dashboard` to `/watchlist` doesn't require a re-fetch if the data is already in the `BehaviorSubject`.
+3.  **Data Normalization & Validation**:
+    *   **Zod Integration**: Services use Zod schemas to validate backend responses. If the API changes or breaks its contract, the error is caught and handled at the service layer, preventing UI crashes.
+    *   **Transformation**: The service can transform complex backend JSON into a "UI-ready" shape before emitting it to observers.
+4.  **Decoupled Development (Mocking)**:
+    *   Services implement a `usingMockData` toggle.
+    *   Frontend developers can build and test entire features using mock data emitted by the RxJS subjects, completely independent of the backend's status.
+
+---
+
+## RxJS + Svelte Rune Integration
+
+The architecture uses **RxJS** for cross-framework business logic and **Svelte 5 Runes** for high-performance UI reactivity.
+
+### State Adapter Pattern
+Business logic services (in `modules/*/ts`) expose RxJS Observables. Svelte modules (in `modules/*/svelte`) use a **State Rune Class** to bridge these observables into Svelte's reactive system.
 
 ```typescript
-// modules/watchlist/ts/src/services/WatchlistService.ts
-export class WatchlistService {
-  private _tickers$ = new BehaviorSubject<TickerItem[]>([]);
-  public readonly tickers$ = this._tickers$.asObservable();
+// modules/watchlist/svelte/src/lib/runes/WatchlistState.svelte.ts
+import { watchlistRxService } from "@modules/watchlist-ts";
 
-  // Svelte-compatible subscribe method
-  public subscribe(run: (value: TickerItem[]) => void): () => void {
-    const subscription = this._tickers$.subscribe(run);
-    return () => subscription.unsubscribe();
+class WatchlistState {
+  // $state: Deeply reactive source of truth
+  tickers = $state<ITicker[]>([]);
+  loading = $state(false);
+
+  // $derived: Auto-updating computed value
+  tickerCount = $derived(this.tickers.length);
+
+  constructor() {
+    // Bridge RxJS -> Svelte Rune
+    watchlistRxService.watchlist$.subscribe((data) => {
+      this.tickers = data.tickers;
+      this.loading = false;
+    });
+  }
+
+  public refresh() {
+    this.loading = true;
+    watchlistRxService.getWatchlist();
   }
 }
+
+export const watchlistState = new WatchlistState();
 ```
 
-Usage in Svelte:
+### Component Usage ($props)
+Components receive data either from the global State Rune or via `$props()` for dependency injection.
 
 ```svelte
-<script>
-import { watchlistService } from '@watchlist/services';
+<!-- modules/watchlist/svelte/src/lib/widgets/WatchlistWidget.svelte -->
+<script lang="ts">
+  import { watchlistState } from "../runes/WatchlistState.svelte";
+  
+  // $props: Modern Svelte 5 component communication
+  let { title = "My Watchlist" } = $props();
+
+  // $derived: Reactive local view of the global state
+  let tickers = $derived(watchlistState.tickers);
 </script>
 
-{#each $watchlistService as ticker}
-    <p>{ticker.symbol}</p>
-{/each}
+<div class="card">
+  <h3>{title} ({watchlistState.tickerCount})</h3>
+  {#each tickers as ticker}
+    <p>{ticker.symbol}: {ticker.last}</p>
+  {/each}
+</div>
 ```
 
 ### ModuleStateStore
 
-For cross-module state, [moduleState.ts](file:///c:/Users/reidl/GitLocal/ta-workspace/apps/sv-appshell/src/lib/stores/moduleState.ts) provides channel-based communication:
+For cross-module state, [moduleState.ts](file:///home/reidlai/GitLocal/ta-workspace/apps/sveltekit-appshell/src/lib/stores/moduleState.ts) provides channel-based communication:
 
 ```typescript
 class ModuleStateStore {
@@ -788,7 +892,7 @@ class MyApp extends StatelessWidget {
 
 | Layer            | Frontend (SvelteKit)         | Backend (Go/Goa)         |
 | ---------------- | ---------------------------- | ------------------------ |
-| **Host**         | `apps/sv-appshell`           | `apps/ta-server`         |
+| **Host**         | `apps/sveltekit-appshell`    | `apps/go-server`         |
 | **Discovery**    | `ModuleLoader` + glob        | Go imports in `cmd/*.go` |
 | **Registration** | `Registry.register(bundle)`  | `NewEndpoints(svc)`      |
 | **Widgets**      | `IWidget` → Svelte component | N/A                      |
