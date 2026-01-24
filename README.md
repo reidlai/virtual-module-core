@@ -50,10 +50,11 @@ if (match) {
 
 Comprehensive documentation is available in the `docs/` directory:
 
-- [**Developer Guide**](docs/DEVELOPER-GUIDE.md): Tutorial for using the library and building modules.
-- [**SDK Reference**](docs/SDK-REFERENCE.md): API documentation for `IModuleBundle`, `IFrameworkAdapter`, etc.
 - [**App Shell Architecture**](docs/APPSHELL-ARCHITECTURE.md): Guidelines for host applications.
 - [**Virtual Module Architecture**](docs/VIRTUAL-MODULE-ARCHITECTURE.md): Architecture of virtual modules.
+- [**Monorepo Architecture**](docs/MONOREPO-ARCHITECTURE.md): Guidelines for monorepo structure.
+- [**Developer Guide**](docs/DEVELOPER-GUIDE.md): Tutorial for using the library and building modules.
+- [**SDK Reference**](docs/SDK-REFERENCE.md): API documentation for `IModuleBundle`, `IFrameworkAdapter`, etc.
 
 ## License
 
