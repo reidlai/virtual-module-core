@@ -1,12 +1,16 @@
-# Portfolio Virtual Module Architecture
+# Virtual Module Architecture
 
-**Primary Reference**: [`ta-workspace/docs/DEVELOPER-GUIDE.md`](https://github.com/reidlai/ta-workspace/blob/main/docs/DEVELOPER-GUIDE.md)
+**Primary Reference**: [APPSHELL-ARCHITECTURE.md](docs/APPSHELL-ARCHITECTURE.md) (Core System Design)
 
-**AppShell Details**: [`ta-workspace/docs/APPSHELL-ARCHITECTURE.md`](https://github.com/reidlai/ta-workspace/blob/main/docs/APPSHELL-ARCHITECTURE.md)
+| Component            | Source Repository                                                         |
+| :------------------- | :------------------------------------------------------------------------ |
+| **Host Workspace**   | [reidlai/ta-workspace](https://github.com/reidlai/ta-workspace)           |
+| **Portfolio Module** | [reidlai/portfolio-virtmod](https://github.com/reidlai/portfolio-virtmod) |
+| **Watchlist Module** | [reidlai/watchlist-virtmod](https://github.com/reidlai/watchlist-virtmod) |
 
 ## Overview
 
-The Portfolio Module is a **polyglot Virtual Module** designed to be embedded into the [ta-workspace](https://github.com/reidlai/ta-workspace) monorepo. It follows the modular architecture pattern where components are developed independently as a Git submodule but deployed as part of the host application.
+This document describes the **polyglot Virtual Module** pattern used to extend App Shell architecture. Based on the foundational principles defined in [APPSHELL-ARCHITECTURE.md](docs/APPSHELL-ARCHITECTURE.md), virtual modules (such as [Portfolio](https://github.com/reidlai/portfolio-virtmod) and [Watchlist](https://github.com/reidlai/watchlist-virtmod)) are developed as independent repositories and integrated as Git submodules. This architecture enables feature teams to build, test, and version modules independently while the host AppShell orchestrates them into a unified experience at runtime.
 
 ### Module Structure
 
@@ -15,49 +19,57 @@ Following the workspace standard defined in [`DEVELOPER-GUIDE.md`](https://githu
 ```mermaid
 flowchart TD
     %% Subgraph for Host Application
-    subgraph HostApp ["Host Application (sv-appshell)"]
+    subgraph HostApp ["Host Application (sveltekit-appshell)"]
         direction TB
-        Registry[["Module Registry"]]
-        AppRouter[["App Router"]]
-        DI[["DI Container"]]
+        Loader["ModuleLoader<br/>(Discovery)"]
+        Registry[["Registry / DI Container<br/>(Orchestration)"]]
+        AppRouter["App Router"]
     end
 
     %% Subgraph for Virtual Module
     subgraph VirtualModule ["Virtual Module (e.g. Portfolio)"]
         direction TB
+        Init["init(context)<br/>(Initialization)"]
 
         %% Frontend Layer
         subgraph Frontend ["Frontend Layer (SvelteKit)"]
             Widgets["Widgets<br/>(UI Components)"]
             Pages["Pages<br/>(Routes)"]
-            Runes["Runes State<br/>(.svelte.ts)"]
+            Runes["Svelte Runes<br/>(.svelte.ts)"]
         end
 
         %% Shared Logic
         subgraph Shared ["Shared Logic (TypeScript)"]
             Services["RxJS Services<br/>(Business Logic)"]
-            Schemas["Zod Schemas<br/>(Data Contract)"]
+            Schemas["Zod Schemas<br/>(SSOT / Data Contract)"]
         end
 
         %% Backend Layer
         subgraph Backend ["Backend Layer (Go)"]
             GoService["Go Service<br/>(Implementation)"]
             GoaDSL["Goa DSL<br/>(API Definition)"]
+            OpenAPI["OpenAPI Spec<br/>(Generated)"]
         end
     end
 
-    %% Wiring & Integration
-    Registry -- "Auto-Discovers" --> Widgets
+    %% Lifecycle & Wiring
+    Loader -- "Discovers & Loads" --> Init
+    Init -- "Returns Bundle" --> Registry
+    Registry -- "Mounts" --> Widgets
     Registry -- "Registers" --> Pages
     AppRouter -- "Routes To" --> Pages
-    DI -- "Injects into" --> Services
+    Registry -- "Provides Deps" --> Services
 
     %% Internal Module Flow
+    Services -- "Validates vs" --> Schemas
     Services -- "Streams Data" --> Runes
     Runes -- "Reactive Updates" --> Widgets
-    Schemas -- "Validates" --> Services
-    Schemas -. "Generates" .-> GoaDSL
+    Schemas -- "Mapped to" --> GoaDSL
     GoaDSL -- "Generates" --> GoService
+    GoaDSL -- "Generates" --> OpenAPI
+
+    %% Contract Verification Loop
+    OpenAPI -. "Verified against" .-> Schemas
 
     %% Styling
     style HostApp fill:#f0f4f8,stroke:#334155,stroke-width:2px,color:#1e293b
@@ -68,31 +80,29 @@ flowchart TD
 ```
 
 ```
-portfolio/
+[module_name]/
 ├── go/                              # Backend Layer (Goa)
-│   ├── design/                      # Goa DSL (mirrors Zod schemas)
-│   ├── gen/                         # Generated Goa code
-│   ├── pkg/                         # Service implementations
+│   ├── design/                      # Goa DSL (defines API contract)
+│   ├── goa_gen/                     # Generated Goa code
+│   ├── pkg/                         # Service implementations (Business Logic)
 │   └── moon.yml                     # Go project tasks
-├── ts/                              # Shared Logic Layer
+├── ts/                              # Shared Logic Layer (Transport & State)
 │   ├── src/
-│   │   ├── schema/                  # ✅ Zod schemas (single source of truth)
-│   │   ├── services/                # ✅ RxJS services (validate against schemas)
-│   │   └── index.ts                 # ✅ Export schemas + services
+│   │   ├── lib/                     # Core libraries (e.g. api-client.ts, schemas.ts)
+│   │   ├── services/                # ✅ RxJS services (Transport decoupling)
+│   │   ├── utils/                   # Shared utilities (e.g. logger)
+│   │   └── index.ts                 # ✅ SSOT: Exports all schemas + services
 │   ├── package.json
 │   └── moon.yml                     # TypeScript project tasks
 ├── sveltekit/                       # UI Layer (SvelteKit)
 │   ├── src/
-│   │   └── lib/
-│   │       ├── components/ui/       # ShadCN Svelte components
-│   │       ├── widgets/             # Reusable UI widgets
-│   │       ├── runes/               # Svelte 5 runes (import from @modules/portfolio-ts)
-│   │       └── routes/              # SvelteKit routes
-│   ├── package.json                 # Depends on: "@modules/portfolio-ts": "workspace:*"
+│   │   ├── lib/
+│   │   │   ├── components/ui/       # ShadCN Svelte components
+│   │   │   ├── widgets/             # Reusable UI widgets (Registry-bound)
+│   │   │   └── runes/               # Svelte 5 runes (Adapter pattern for RxJS)
+│   │   └── routes/                  # SvelteKit routes (Module-specific pages)
+│   ├── package.json                 # Depends on: "@modules/[module_name]-ts": "workspace:*"
 │   └── moon.yml                     # Svelte project tasks
-├── docs/
-│   └── VIRTUAL-MODULE-ARCHITECTURE.md  # This file
-├── threat_modelling/                # Security models (PyTM)
 └── moon.yml                         # Module root aggregated tasks
 
 Dependency Flow: sveltekit → ts ← go (one-way, no circular dependencies)
@@ -100,218 +110,110 @@ Dependency Flow: sveltekit → ts ← go (one-way, no circular dependencies)
 
 **Key Principles**:
 
-- **Schemas in `ts/src/schema/`**: Avoids circular dependencies (see [DEVELOPER-GUIDE.md](https://github.com/reidlai/ta-workspace/blob/main/docs/DEVELOPER-GUIDE.md#data-contract-zod-schemas))
-- **RxJS Services in `ts/src/services/`**: Validate all data against Zod schemas
-- **Svelte Components**: Import from `@modules/portfolio-ts` via workspace alias
+- **Schemas and API client in `ts/src/lib/`**: Avoids circular dependencies (see [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md#data-contract-zod-schemas))
+- **RxJS Services in `ts/src/services/`**: Expose reactive Observables bridged to **Svelte Runes** via the State Adapter Pattern (see [APPSHELL-ARCHITECTURE.md](APPSHELL-ARCHITECTURE.md#rxjs--svelte-rune-integration))
 
 ## Integration Model
 
 ### Git Submodule Integration
 
-This module is developed as a **separate Git repository** and integrated via Git submodules. See [`DEVELOPER-GUIDE.md - Git Submodule Workflow`](https://github.com/reidlai/ta-workspace/blob/main/docs/DEVELOPER-GUIDE.md#git-submodule-workflow) for details.
+Virtual Modules are developed as **independent Git repositories** and integrated into the host platform ([reidlai/ta-workspace](https://github.com/reidlai/ta-workspace)) as Git submodules.
 
 **Integration Steps**:
 
 1. **Add as Submodule** (from workspace root):
-
    ```bash
-   git submodule add git@github.com:yourorg/portfolio-virtmod.git modules/portfolio
+   git submodule add git@github.com:reidlai/[module_name]-virtmod.git modules/[module_name]
    git submodule update --init --recursive
    ```
 
-2. **Configure Workspace** (see [DEVELOPER-GUIDE.md - Workspace Configuration](https://github.com/reidlai/ta-workspace/blob/main/docs/DEVELOPER-GUIDE.md#workspace-level-configuration-files)):
-   - Update `.moon/workspace.yml` - Add project paths
-   - Update `pnpm-workspace.yaml` - Add package paths
-   - Update `go.work` - Add Go module path
-   - Update `apps/sv-appshell/svelte.config.js` - Add `@modules/portfolio-ts` alias
-   - Update `apps/sv-appshell/vite.config.ts` - Add `@modules/portfolio-ts` alias
+2. **Configure Workspace**:
+   To ensure the host AppShell and build system can see the new module, updates are required in three key configuration files:
+   - **`.moon/workspace.yml`**: Add the module's sub-projects to the `projects` map (e.g., `modules/[module_name]/go`, `modules/[module_name]/ts`, `modules/[module_name]/sveltekit`).
+   - **`pnpm-workspace.yaml`**: Add the module's root path (e.g., `modules/[module_name]/**`) to include its packages in the pnpm workspace.
+   - **`go.work`**: Add the backend path (e.g., `./modules/[module_name]/go`) to the Go workspace for cross-module development.
 
-3. **Install Dependencies**:
+3. **Install & Sync**:
    ```bash
    pnpm install
    moon sync
    ```
 
-### NOT a Standalone Service
+### Runtime Integration (Module Registry)
 
-This module is **NOT** designed to run independently. It has:
+Modules are **NOT** standalone services. They provide artifacts that are statically or dynamically integrated:
+- **Backend**: Go services are instantiated and passed into the host server via Dependency Injection.
+- **Frontend**: The `ModuleLoader` discovers the module entry point (`index.ts`), and the module's `init()` function registers its widgets, handlers, and routes with the **`Registry`**.
 
-- ❌ No main entry point
-- ❌ No independent HTTP server
-- ❌ No database ownership
-- ❌ No authentication system
-
-Instead, it provides **embeddable components** that are:
-
-- ✅ Compiled into the host app's binary (Go services)
-- ✅ Bundled into the host app's frontend (Svelte widgets)
-- ✅ Registered at runtime via the host's service registry
+---
 
 ## Component Boundaries
 
-This architecture follows the **UI-First** design flow: `UI (Svelte)` → `Data Contract (Schema)` → `State (RxJS)` → `API (Go)`.
+The architecture follows a strict **UI-First** design flow: `UI (Svelte)` → `API Contract (Schema)` → `Reactive State (RxJS)` → `Implementation (Go)`.
 
-### 1. Frontend (Svelte)
+### 1. Frontend Layer (SvelteKit)
 
-**Role**: User Interaction & Presentation
-**Design Artifacts**: Storybook Stories, Figma Designs
+**Role**: Presentation and User Interaction.
+**Reactivity**: Uses **Svelte 5 Runes** for predictable, high-performance UI state.
 
-The UI drives the requirements. We use **Svelte 5 Runes** to manage local reactivity, bridging from the shared RxJS services.
-
-**Pattern**: Widget Registry + Rune Adapter
-
-**1. Create the Rune Adapter** (`sveltekit/src/lib/runes/PortfolioState.svelte.ts`):
+#### State Adapter Pattern
+Since business logic lives in the Shared Logic layer (RxJS), Svelte modules implement a **State Rune Class** to bridge backend streams into the UI.
 
 ```typescript
-import { portfolioService } from "@modules/portfolio-ts/services/PortfolioService";
-import type { PortfolioSummary } from "@modules/portfolio-ts/schema/portfolioSummary";
+// modules/[module_name]/sveltekit/src/lib/runes/[Module]State.svelte.ts
+import { [module]RxService } from "@modules/[module]-ts";
 
-export class PortfolioState {
+export class [Module]State {
   // Svelte 5 Reactive State
-  summary = $state<PortfolioSummary | null>(null);
+  data = $state<any>(null);
+  loading = $state(false);
 
   constructor() {
-    // Bridge RxJS Stream -> Svelte Rune
-    portfolioService.summary$.subscribe((data) => {
-      this.summary = data;
+    // Bridge RxJS Observable -> Svelte Rune
+    [module]RxService.data$.subscribe((val) => {
+      this.data = val;
+      this.loading = false;
     });
   }
 }
-
-// Export singleton or create new instances as needed
-export const portfolioState = new PortfolioState();
-```
-
-**2. Consume in Widget** (`sveltekit/src/lib/widgets/PortfolioSummaryWidget.svelte`):
-
-```svelte
-<script lang="ts">
-  import { portfolioState } from '$lib/runes/PortfolioState.svelte';
-
-  // Reactivity is automatic with Runes
-  // No $ prefix needed for class properties, just for the import if it was a store
-</script>
-
-{#if portfolioState.summary}
-  <div class="summary">
-    <h2>Total Value: {portfolioState.summary.totalValue}</h2>
-  </div>
-{/if}
+export const [module]State = new [Module]State();
 ```
 
 **Boundaries**:
+- No direct dependency on API clients; consumes data only through RxJS services.
+- UI components use `$props()` to support Dependency Injection and testability.
 
-- **Routing**: No internal routing logic; components render into host slots.
-- **State**: Strictly controlled via Runes (`.svelte.ts`) in `lib/runes/`.
-- **Inputs**: strictly typed props or service subscriptions.
+### 2. Shared Logic Layer (TypeScript)
 
-### 2. Shared Schemas & Services (TypeScript)
+**Role**: Single Source of Truth (SSOT), Data Validation, and State Management.
+**Tooling**: Zod + RxJS.
 
-**Role**: Data Contract & State Management
-**Design Artifacts**: Zod Schemas
+This layer acts as a buffer between the raw backend API and the frontend UI, ensuring **Transport Independence**.
 
-Once the UI requirements are clear, they are solidified into **Zod Schemas**. These schemas serve as the single source of truth for both the frontend state and the backend API.
-
-**Pattern**: Zod Schema + RxJS Services
-
-```typescript
-// 1. Define the Contract (Zod)
-// modules/portfolio/ts/src/schema/portfolioSummary.ts
-export const PortfolioSummarySchema = z.object({
-  totalValue: z.number(),
-  // ...
-});
-
-// 2. Implement State (RxJS)
-// modules/portfolio/ts/src/services/PortfolioService.ts
-export class PortfolioService {
-  // Data flowing to UI is validated against the schema
-  public setSummary(data: unknown) {
-    const valid = PortfolioSummarySchema.parse(data);
-    this._summary$.next(valid);
-  }
-}
-```
+**Pattern**: SSOT + RxJS Service
+- **`ts/src/lib/`**: Contains the Zod schemas and the generated API client.
+- **`ts/src/services/`**: Contains the RxJS services that encapsulate API calls and manage reactive state.
+- **`ts/src/index.ts`**: The SSOT entry point that exports all public interfaces and handles for the module.
 
 **Boundaries**:
+- Strictly decoupled from Svelte; can be used by any TypeScript-based shell (e.g., NextJS).
+- Validates all incoming data via Zod before emitting it to observers.
 
-- **Schema Authority**: `ts/src/schema/` is the master definition.
-- **Validation**: Services act as gatekeepers, ensuring only valid data reaches the UI.
-- **Decoupling**: Decouples UI from the specific backend transport (HTTP, WebSocket).
+### 3. Backend Layer (Go)
 
-### 3. Backend (Go)
+**Role**: Persistence, Business Logic, and Contract Fulfillment.
+**Tooling**: Goa.
 
-**Role**: Business Logic & Persistence
-**Design Artifacts**: Goa DSL (mapped from Zod)
+The backend satisfies the API contract derived from the Shared Logic layer.
 
-The backend implements the API contract defined by the Zod schemas.
-
-**Critical Step: Zod to Goa Mapping**
-As per `DEVELOPER-GUIDE.md`, we use AI assistance to translate Zod schemas into Goa DSL to ensure exact type matching.
-
-**Pattern**: Service Provider with Dependency Injection
-
-**Module Design** (`modules/portfolio/go/design/design.go`):
-
-```go
-// Goa DSL matches Zod Schema
-var PortfolioSummary = Type("PortfolioSummary", func() {
-    Attribute("totalValue", Float64, "Total portfolio value")
-    // ... matches PortfolioSummarySchema
-    Required("totalValue")
-})
-
-var _ = Service("portfolio", func() {
-    Method("getSummary", func() {
-        Result(PortfolioSummary) // JSON response structure
-        HTTP(func() {
-            GET("/summary")
-        })
-    })
-})
-```
-
-**Module Implementation** (`modules/portfolio/go/pkg/service.go`):
-
-```go
-// Module implements the contract
-func NewPortfolioService(logger *slog.Logger, db *sql.DB) portfolio.Service {
-    return &portfolioService{ logger: logger, db: db }
-}
-```
-
-### 4. Contract Verification (Loop Closure)
-
-**Goal**: Ensure Frontend (Zod) and Backend (OpenAPI) stay in sync.
-
-After generating the Go code, Goa produces an OpenAPI specification at `go/gen/http/openapi3.json`. We must validate our Zod schemas against this spec.
-
-**Validation Step**:
-
-1.  **Generate OpenAPI Spec**: `moon run portfolio-go:goa-gen`
-2.  **Validate Zod vs OpenAPI**:
-    Run a contract test in `ts/src/schema/portfolioSummary.test.ts` using a tool like `openapi-zod-validator` (or similar utility).
-
-    ```typescript
-    // ts/src/schema/portfolioSummary.test.ts
-    import { PortfolioSummarySchema } from "./portfolioSummary";
-    import openApiSpec from "../../../go/gen/http/openapi3.json";
-
-    test("Zod schema matches OpenAPI spec", () => {
-      // Pseudo-code: verify that the Zod shape matches the OpenAPI definition
-      expect(PortfolioSummarySchema).toMatchOpenApi(
-        openApiSpec,
-        "PortfolioSummary",
-      );
-    });
-    ```
+**Pattern**: Design-First with OpenAPI Verification
+- **`go/design/`**: Defines the API and data types using Goa DSL (mapped from Zod schemas).
+- **`go/pkg/`**: Implements the service interface generated by Goa.
+- **OpenAPI Loop**: The generated `openapi3.json` is verified against the Zod schemas in the Shared Logic layer to ensure full contract alignment (Loop Closure).
 
 **Boundaries**:
-
-- **Contract Fulfillment**: Must implement the interface generated by Goa (which matches the Zod schema).
-- **Statelessness**: Logic should be stateless; persistence is handled via injected DB connections.
-- **Verification**: CI pipeline fails if Zod schema and OpenAPI spec diverge.
-- **Isolation**: No direct dependency on Svelte or TypeScript code; purely satisfies the API contract.
+- No knowledge of the frontend; purely implements the transport-agnostic interface defined in the design.
+- Persistence and infrastructure (logging, DB) are provided via Dependency Injection from the host AppShell.
 
 ## Dependency Management
 
@@ -371,244 +273,130 @@ See `threat_modelling/tm.py` for PyTM model:
 
 ## UI-First Development Workflow
 
-**Reference**: [`ta-workspace/docs/DEVELOPER-GUIDE.md`](https://github.com/reidlai/ta-workspace/blob/main/docs/DEVELOPER-GUIDE.md#standard-module-workflow)
+**Primary Reference**: [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md)
 
-This module follows a strictly phased **UI-First** design philosophy. Do NOT start backend coding until Phase 3.
+This module follows a strictly phased **UI-First** design philosophy. Backend implementation only begins after UI behaviors and data contracts are validated in isolation.
 
-### Phase 1: Pure UI Prototyping (Local State)
+### The 9-Step Sequence
 
-**Goal**: Validate the UX with users using fully functional UI artifacts, BEFORE defining any schemas or backend.
+#### Step 1: Create UI Components
+- **Path**: `sveltekit/src/lib/widgets/[WidgetName].svelte`
+- **Goal**: Build the UI using **ShadCN Svelte** and Svelte 5 `$state`. Use hardcoded local variables initially to focus on layout and UX.
 
-1.  **Create the Widget**:
-    - **Path**: `sveltekit/src/lib/widgets/PortfolioSummaryWidget.svelte`
-    - **Technique**: Use standard Svelte 5 `$state` with **hardcoded local variables**.
-    - **Components**: Use **ShadCN Svelte** from `$lib/components/ui`.
+#### Step 2: Create Local Types for Storybook
+- **Path**: `sveltekit/src/lib/widgets/[WidgetName].types.ts`
+- **Goal**: Define the interfaces required to drive the UI. This acts as the initial "Design Contract".
 
-    ```svelte
-    <script lang="ts">
-      import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card";
+#### Step 3: Create Storybook Scenarios
+- **Path**: `sveltekit/src/lib/widgets/[WidgetName].stories.ts`
+- **Goal**: Create various scenarios (Loading, Empty, Data, Error) with sample data. Validate the component's look and feel with stakeholders.
 
-      // 1. Define Design-Time State (Local Variables)
-      let totalValue = $state(125000.50);
-      let dayChange = $state(1250.00);
-    </script>
+#### Step 4: Define State Types (Runes & Stores)
+- **Path**: `sveltekit/src/lib/runes/[Module]State.svelte.ts`
+- **Goal**: Define the state classes that will eventually hold the data. Use `$state`, `$derived`, and `$props` (runes) to support SvelteKit's reactivity model.
 
-    <Card>
-      <CardHeader><CardTitle>Portfolio Value</CardTitle></CardHeader>
-      <CardContent>
-        <div class="text-2xl font-bold">${totalValue}</div>
-        <div class="text-sm text-muted-foreground">+${dayChange} (1.0%)</div>
-      </CardContent>
-    </Card>
-    ```
+#### Step 5: Create Goa Design DSL
+- **Path**: `go/design/design.go`
+- **Goal**: Formalize the design contract in Go. Define services, methods, and types using Goa DSL, ensuring they align with the requirements identified in Step 2.
 
-2.  **User Confirmation**:
-    - Review this widget (via Storybook or Dev Server) with stakeholders.
-    - **Stop**: Do not proceed until the UI layout and interactivity are approved.
+#### Step 6: Generate API Server Interface
+- **Command**: `moon run [module_name]-go:goa-gen`
+- **Goal**: Use Goa to generate the transport layer and the service interface in Golang.
 
----
+#### Step 7: Implement API Server
+- **Path**: `go/pkg/service.go`
+- **Goal**: Implement the business logic and persistence layer that satisfies the generated interface.
 
-### Phase 2: Data Contract & Mock State (RxJS + Zod)
+#### Step 8: Generate TypeScript API Client
+- **Tooling**: Goa + Zodios
+- **Path**: `ts/lib/api-client.ts`
+- **Goal**: Use the Goa-generated OpenAPI spec to generate a TypeScript client that supports **Zod schemas** and the **Zodios** API client. This ensures the frontend uses the exact same data contract as the backend.
 
-**Goal**: Formalize the approved UI data into a strict contract and mock service.
-
-1.  **Extract to Zod Schema**:
-    - **Path**: `ts/src/schema/portfolio.ts` (Shared Layer)
-    - Take the local variables from Phase 1 and define them in Zod.
-
-    ```typescript
-    import { z } from "zod";
-
-    export const PortfolioSummarySchema = z.object({
-      totalValue: z.number(),
-      dayChange: z.number(),
-      percentChange: z.number(),
-    });
-
-    export type PortfolioSummary = z.infer<typeof PortfolioSummarySchema>;
-    ```
-
-2.  **Create RxJS Service with Mocks**:
-    - **Path**: `ts/src/services/PortfolioService.ts`
-    - Initialize the `BehaviorSubject` with **mock data** matching the schema. Do not call APIs yet.
-
-    ```typescript
-    import { BehaviorSubject } from "rxjs";
-    import {
-      PortfolioSummarySchema,
-      type PortfolioSummary,
-    } from "../schema/portfolio";
-
-    export class PortfolioService {
-      // Initialize with MOCK data for immediate UI feedback
-      private _summary$ = new BehaviorSubject<PortfolioSummary | null>({
-        totalValue: 125000.5,
-        dayChange: 1250.0,
-        percentChange: 1.0,
-      });
-
-      public readonly summary$ = this._summary$.asObservable();
-
-      // Later: this will be replaced by API calls in Phase 4
-      public updateMockData(newData: PortfolioSummary) {
-        const valid = PortfolioSummarySchema.parse(newData);
-        this._summary$.next(valid);
-      }
-    }
-
-    export const portfolioService = new PortfolioService();
-    ```
+#### Step 9: Integrate RxJS, Runes, and Client
+- **Path**: `ts/src/services/[Module]RxService.ts`
+- **Goal**: Bridge the three layers. The RxJS service calls the API client, validates the results via Zod, and performs any necessary **payload transformations** before the data is consumed by the **Svelte Runes** in the UI.
 
 ---
 
-### Phase 3: Connect UI to Shared State (Runes Integration)
-
-**Goal**: Replace local hardcoded variables with the shared reactive state.
-
-1.  **Create Rune Adapter**:
-    - **Path**: `sveltekit/src/lib/runes/PortfolioState.svelte.ts`
-    - Import the Zod type and RxJS service.
-
-    ```typescript
-    import { portfolioService } from "@modules/portfolio-ts/services/PortfolioService";
-    import type { PortfolioSummary } from "@modules/portfolio-ts/schema/portfolio";
-
-    export class PortfolioState {
-      summary = $state<PortfolioSummary | null>(null);
-
-      constructor() {
-        // Sync RxJS -> Svelte State
-        portfolioService.summary$.subscribe((val) => {
-          this.summary = val;
-        });
-      }
-    }
-    export const portfolioState = new PortfolioState();
-    ```
-
-2.  **Update Widget**:
-    - **Path**: `sveltekit/src/lib/widgets/PortfolioSummaryWidget.svelte`
-    - Replace local variables with the Rune state.
-
-    ```svelte
-    <script lang="ts">
-      import { portfolioState } from "$lib/runes/PortfolioState.svelte";
-      // Removed local $state variables
-    </script>
-
-    {#if portfolioState.summary}
-      <Card>
-        <CardContent>
-           <!-- Now driven by Shared State -->
-           <div class="text-2xl">${portfolioState.summary.totalValue}</div>
-        </CardContent>
-      </Card>
-    {/if}
-    ```
-
----
-
-### Phase 4: Backend Contract (Goa DSL)
-
-**Goal**: Ensure the backend implements the exact structure expected by the UI.
-
-1.  **Map Zod to Goa**:
-    - **Path**: `go/design/design.go`
-    - Translate `ts/src/schema/portfolio.ts` -> Goa DSL.
-
-    ```go
-    // Match Zod: { totalValue: number, dayChange: number ... }
-    var PortfolioSummary = Type("PortfolioSummary", func() {
-         Attribute("totalValue", Float64)  // Maps to z.number()
-         Attribute("dayChange", Float64)   // Maps to z.number()
-         Attribute("percentChange", Float64)
-         Required("totalValue", "dayChange")
-    })
-
-    var _ = Service("portfolio", func() {
-         Method("getSummary", func() {
-             Result(PortfolioSummary)
-             HTTP(func() { GET("/summary") })
-         })
-    })
-    ```
-
-2.  **Generate & Implement**:
-    - Run `moon run portfolio-go:goa-gen`.
-    - Implement the service logic to return real data matching this structure.
-
----
-
-## App Architecture Constraints (Updates)
+## App Architecture Constraints
 
 ### 1. Mockability
 
-**Rule**: All external dependencies (Host APIs, DBs, Auth) MUST be mockable.
+**Rule**: All external dependencies (Host APIs, DBs, Auth) MUST be mockable to support isolated development and testing.
 
-- **Go**: Structs must accept Interfaces.
-- **Svelte**: Components must accept Props or use Context.
+- **Go**: Services must depend on **Interfaces**, not concrete structs. Use the Goa-generated interfaces to ensure transport independence.
+- **RxJS**: Services must provide a `usingMockData` mode to emit simulated payloads without a live backend.
+- **Svelte**: Components must receive data through `$props()` or context-injected Runes to facilitate Storybook testing.
 
 ### 2. Dependency Injection
 
-**Rule**: No hardcoded instantiations of infra clients.
+**Rule**: No hardcoded instantiations of infrastructure clients within the core logic.
 
-- Use Service Factories (`NewPortfolioService(deps...)`).
+- **Pattern**: Use Service Factories (e.g., `New[Module]Service(logger, db, deps...)`) to inject dependencies at the AppShell entry point.
+- **Frontend**: Register service instances with the **`Registry`** during the `init()` phase.
+
+---
 
 ## Testing Strategy
 
 ### Unit Tests
+Test each layer in isolation within the module directory.
 
 ```bash
-# Test module in isolation
-npx @moonrepo/cli run portfolio:test
+# Test Go logic
+moon run [module_name]-go:test
+
+# Test Shared Logic (RxJS/Zod)
+moon run [module_name]-ts:test
+
+# Test UI Components
+moon run [module_name]-sveltekit:test
 ```
 
 ### Integration Tests
+Test the module within the host AppShell context.
 
 ```bash
-# Test within host context (run from ta-workspace)
-npx @moonrepo/cli run :test
+# Test backend integration in the shell
+moon run go-server:test
+
+# Test frontend integration in the shell
+moon run sveltekit-appshell:test
 ```
 
 **Boundaries**:
+- **Unit Tests**: Mock all host dependencies (DB, logger, shell context).
+- **Integration Tests**: Use host's test fixtures and real internal registry routing.
 
-- Unit tests: Mock host dependencies (DB, logger)
-- Integration tests: Use host's test fixtures
+---
 
 ## Deployment
 
 ### Build Artifacts
+Virtual Modules produce **no independent artifacts**. They are compiled/bundled into the host:
 
-The module produces **no independent artifacts**. It's compiled into:
-
-- `ta-server` binary (Go services embedded)
-- `sv-appshell` bundle (Svelte widgets bundled)
+- **`go-server`**: The module's Go implementation is imported and compiled into the main server binary.
+- **`sveltekit-appshell`**: The module's Svelte widgets and TypeScript logic are bundled into the shell's frontend build.
 
 ### Release Process
+1. Module changes are committed to the independent `[module_name]-virtmod` repository.
+2. The host workspace (`ta-workspace`) updates the Git submodule reference.
+3. Host CI rebuilds the shell binaries/bundles with the new module code.
+4. A single deployment of the host app includes all module updates.
 
-1. Module changes are committed to `portfolio-virtmod`
-2. Host app updates submodule reference
-3. Host app's CI rebuilds with new module code
-4. Single deployment of host app includes module changes
+---
 
 ## Migration Considerations
 
 ### From Standalone to Virtual Module
-
 If migrating an existing service:
+1. **Remove Main Entry**: Delete the `main.go`.
+2. **Implement Factory**: Convert logic to the service factory pattern with interface-based DI.
+3. **Externalize Infrastructure**: Remove DB schema ownership and auth middleware (rely on host injections).
+4. **Register with Shell**: Implement the `init()` entry point to register widgets and routes.
 
-1. Remove main entry point
-2. Convert to service factory pattern
-3. Remove DB schema ownership (use host's)
-4. Remove auth middleware (use host's)
-5. Export widgets instead of routes
-
-### Future Extraction
-
-If module needs to become standalone:
-
-1. Add main entry point
-2. Add HTTP server setup
-3. Add database migrations
-4. Add auth middleware
-5. Convert widgets to API-driven pages
+### Future Standalone Extraction
+If a module needs to become standalone:
+1. **Add Main Entry**: Create a new `main.go` and HTTP server setup.
+2. **Restore Infrastructure**: Re-add database migrations and auth middleware.
+3. **Expose Directly**: Convert internal Registry-bound widgets/routes into standard standalone pages.

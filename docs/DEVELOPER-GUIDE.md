@@ -1,879 +1,530 @@
-# Developer Guide: Virtual Module Core
+# Developer Guide: Virtual Module Development
 
-This guide helps you use `virtual-module-core` to build generic modules, framework adapters, and follow the standard "UI-First" development workflow.
+This guide provides a comprehensive "build from scratch" walkthrough for developing **Polyglot Virtual Modules**. It follows a strictly phased **UI-First** workflow to ensure that backend APIs satisfy frontend requirements without waste.
 
-## Standard Development Workflow
+---
 
-The recommended workflow follows a **UI-First** approach, ensuring that the backend API exactly matches the needs of the frontend.
+## 🚀 Standard Development Workflow
+
+The 9-step sequence below is the definitive standard for all feature development.
 
 ```mermaid
 flowchart TD
-    %% Phase 1: Prototyping
-    subgraph Phase1 ["Phase 1: UI Prototyping"]
-        direction TB
-        UI["UI Component<br/>(Svelte + Local State)"]
+    subgraph UI ["Phase 1: UI-First Prototyping"]
+        Step1["1. Create UI<br/>(Svelte + Local State)"]
+        Step2["2. Create Local Types<br/>(Props Interface)"]
+        Step3["3. Storybook Scenarios<br/>(.stories.ts)"]
     end
 
-    %% Phase 2: Contracts
-    subgraph Phase2 ["Phase 2: Data Contract"]
-        direction TB
-        UISchema["UI Schema<br/>(Zod)"]
-        State["State Definition<br/>(RxJS BehaviorSubject)"]
+    subgraph Contract ["Phase 2: Contract & Logic"]
+        Step4["4. Svelte Runes<br/>(State Adapter)"]
+        Step5["5. Goa Design DSL<br/>(API Definition)"]
+        Step6["6. Goa Generation<br/>(moon goa-gen)"]
     end
 
-    %% Phase 3: API Design
-    subgraph Phase3 ["Phase 3: API Design"]
-        direction TB
-        APIDesign["API Design<br/>(Goa DSL)"]
-        APISpec["API Specification<br/>(OpenAPI/Swagger)"]
+    subgraph Backend ["Phase 3: Implementation"]
+        Step7["7. Backend Logic<br/>(Go Implementation)"]
+        Step8["8. Zodios Client<br/>(Generated ts-client)"]
+        Step9["9. Full Integration<br/>(RxJS + Runes + Client)"]
     end
 
-    %% Phase 4: Implementation
-    subgraph Phase4 ["Phase 4: Implementation"]
-        direction TB
-        PayloadVal{"Payload Validation<br/>(Contract Test)"}
-        ServiceImp["API Service Implementation<br/>(Go)"]
-    end
+    Step1 --> Step2 --> Step3
+    Step3 -- "Approved UX" --> Step4 --> Step5 --> Step6
+    Step6 --> Step7 & Step8 --> Step9
 
-    %% Phase 5: AI Integration
-    subgraph Phase5 ["Phase 5: AI Integration"]
-        direction TB
-        GoaAI["Goa-AI DSL<br/>(MCP Tool Definition)"]
-        MCPShell["MCP Server AppShell"]
-        Agent["AI Agent<br/>(LangGraph)"]
-    end
-
-    %% Flow
-    UI -->|"Extracts to"| UISchema
-    UISchema -->|"Defines"| State
-    State -->|"Binds to"| UI
-    UISchema -->|"Translates to"| APIDesign
-    APIDesign -- "Generates" --> APISpec
-
-    %% Validation Loop
-    UISchema -- "Validates against" --> PayloadVal
-    APISpec -- "Validates against" --> PayloadVal
-    PayloadVal -- "Confirmed" --> ServiceImp
-
-    %% AI Integration Flow
-    APIDesign -.->|"Extends"| GoaAI
-    GoaAI -- "Generates" --> MCPShell
-    ServiceImp -- "Injects into" --> MCPShell
-    Agent <-->|"MCP/SSE Protocol"| MCPShell
-
-    style Phase1 fill:#e0f2fe,stroke:#0284c7
-    style Phase2 fill:#fce7f3,stroke:#db2777
-    style Phase3 fill:#fef3c7,stroke:#d97706
-    style Phase4 fill:#dcfce7,stroke:#16a34a
-    style Phase5 fill:#f3e8ff,stroke:#7e22ce
+    style UI fill:#e0f2fe,stroke:#0284c7
+    style Contract fill:#fef3c7,stroke:#d97706
+    style Backend fill:#dcfce7,stroke:#16a34a
 ```
 
 ---
 
-## Tutorial: Step-by-Step Implementation
+## 🛠️ Prerequisites & Toolchain
 
-This tutorial walks through building a "Portfolio" module using the standard UI-First workflow.
+Before you begin, ensure the following tools are installed and configured in your environment.
 
-### Phase 1: Pure UI Prototyping (Local State)
+### 1. Go Ecosystem (Backend)
+- **Go 1.24+**: The primary backend language.
+- **`golangci-lint`**: The standard linter to catch quality issues early.
+- **`goimports`**: Automated import management and formatting.
+- **`gosec`**: Security scanner for Go code (SAST).
+- **`goa`**: The API design and code generation tool.
 
-**Goal**: Validate the UX with users using fully functional UI artifacts, BEFORE defining any schemas or backend.
+```bash
+# Install Go utilities
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+go install golang.org/x/tools/cmd/goimports@latest
+go install github.com/securego/gosec/v2/cmd/gosec@latest
+go install goa.design/goa/v3/cmd/goa@latest
+```
 
-1.  **Create the Widget**:
-    - **Path**: `sveltekit/src/lib/widgets/PortfolioSummaryWidget.svelte`
-    - **Technique**: Use standard Svelte 5 `$state` with **hardcoded local variables**.
-    - **Components**: Use **ShadCN Svelte** from `$lib/components/ui`.
+### 2. TypeScript & Node Ecosystem (Shared & Frontend)
+- **Node.js 20+ (LTS)**: JavaScript runtime.
+- **`pnpm`**: The mandatory package manager for this monorepo.
+- **`tsc`**: TypeScript compiler for the `ts/` layer.
+- **`RxJS 7+`**: Reactive programming library for shared services.
+- **`eslint` & `prettier`**: Pluggable linting and formatting.
 
-    ```svelte
-    <script lang="ts">
-      import * as Card from "../components/ui/card";
+```bash
+# Install global utilities
+npm install -g pnpm
+```
 
-      // 1. Define Design-Time State (Local Variables)
-      let ( totalValue = 125000.50, dayChange = 1250.00, changePercent = 1.0) = $props();
-
-      // 2. Define Derived State
-      //
-      // Reactivity Source: When you write let { changePercent } = $props(), Svelte's compiler interprets changePercent as a reactive value (conceptually, it's like a 
-      // signal getter).
-      // Dependency Tracking: The $derived(...) rune automatically "watches" any reactive values used inside it. Since getChangeColor(changePercent) reads 
-      // changePercent, a dependency is established.         
-      let changeSign = $derived(getChangeSign(changePercent))
-
-      function getChangeSign(changePercent: number): string {
-        if (changePercent > 0.0) {
-            return "+";
-        } 
-        return "";
-      }          
-    </script>
-
-    <Card.Root class="h-full">
-      <CardHeader><CardTitle>Portfolio Value</CardTitle></CardHeader>
-      <Card.Header class="pb-2">
-        <Card.Description>Total Balance</Card.Description>
-        <div class="text-2xl font-bold">
-          ${totalValue}
-        </div>
-      </Card.Header>
-      <Card.Content>
-        <div class="text-2xl font-bold">${dayChange}</div>
-        <div class="text-sm text-muted-foreground">{changePercent}%</div>
-      </Card.Content>
-    </Card.Root>
-    ```
-
-2.  **Create Storybook Story**:
-    - **Path**: `sveltekit/src/lib/widgets/PortfolioSummaryWidget.stories.ts`
-    - **Goal**: Isolate the component for review without running the full app.
-    - **Technique**: Use **Storybook** with **argTypes** to control the component's inputs. Try to declare parameters that are **derived** from the local variables.
-
-    ```typescript
-    import type { Meta, StoryObj } from "@storybook/svelte";
-    import PortfolioSummaryWidget from "./PortfolioSummaryWidget.svelte";
-
-    const meta = {
-      title: "Widgets/PortfolioSummary",
-      component: PortfolioSummaryWidget,
-      tags: ["autodocs"],
-      parameters: {
-        layout: 'centered',
-      },
-      argTypes: {
-        totalValue: {
-            control: "number",
-            description: "Total Value",
-        },
-        dayChange: {
-            control: "number",
-            description: "Day Change",
-        },
-        changePercent: {
-            control: "number",
-            description: "Change Percent",
-        },
-      },            
-    } satisfies Meta<PortfolioSummaryWidget>;
-
-    export default meta;
-    type Story = StoryObj<typeof meta>;
-
-    // Walk through with users to confirm the UI with different scenarios below
-    export const Default: Story = {
-      args: {
-        totalValue: 125000.50,
-        dayChange: 1250.00,
-        changePercent: 1.0,
-      },
-    };
-
-    export const NegativeBalance: Story = {
-      args: {
-        totalValue: 5000.50,
-        dayChange: -1250.00,
-        changePercent: -1.0,
-      },
-    };    
-    ```
-
-3.  **User Confirmation**:
-    - Review this widget (via Storybook or Dev Server) with stakeholders.
-    - Run `npx @moonrepo/cli run <project_name>-sveltekit:storybook` to view the widget in Storybook.
-    - **Stop**: Do not proceed until the UI layout and interactivity are approved.
+### 3. SvelteKit Ecosystem (UI)
+- **Svelte 5**: The reactive framework (Runes).
+- **SvelteKit 2**: The application framework.
+- **Tailwind CSS v4**: The utility-first CSS framework (Vite plugin).
+- **ShadCN Svelte**: UI component library.
+- **Vitest**: Unit testing framework.
+- **Storybook**: Component development environment.
+- **`svelte-check`**: Diagnostic tool for Svelte files.
 
 ---
 
-### Phase 2: Data Contract & Mock State (RxJS + Zod)
+## ⚙️ Core Configuration Basics
 
-**Goal**: Formalize the approved UI data into a strict contract and mock service.
+### 1. TypeScript (`tsconfig.json`)
+We use a hierarchical `tsconfig` pattern. Each layer inherits from a base configuration to ensure consistency:
+- **`tsconfig.base.json`**: Root-level shared compiler options.
+- **`ts/tsconfig.json`**: Specific rules for the shared RxJS library.
+- **`sveltekit/tsconfig.json`**: Rules tailored for SvelteKit and Vite.
 
-1.  **Extract to Zod Schema**:
-    - **Path**: `ts/src/schema/portfolio.ts` (Shared Layer)
-    - Take the local variables from Phase 1 and define them in Zod.
+### 2. Svelte Config (`svelte.config.js`)
+Configures the Svelte compiler and SvelteKit adapters. Crucial for:
+- **Aliases**: Mapping `@modules/[name]-ts` to local paths for cross-layer imports.
+- **Preprocessors**: Enabling `vitePreprocess` for TypeScript and Tailwind support.
 
-    ```typescript
-    import { makeApi, Zodios, type ZodiosOptions } from "@zodios/core";
-    import { z } from "zod";
+### 3. SvelteKit 2 & ShadCN Svelte Foundation
+This project uses **SvelteKit 2** with **ShadCN Svelte** components and **Tailwind CSS v4**.
 
-    // ------------------------------------
-    // Zod Schemas
-    // ------------------------------------
+- **`app.html`**: The primary HTML template for SvelteKit. It includes `%sveltekit.head%` and `%sveltekit.body%` placeholders.
+- **`app.css`**: The global styling entry point. It imports Tailwind CSS v4 (`@import "tailwindcss";`) and defines ShadCN-compatible design tokens in the `@theme` block.
+- **`app.d.ts`**: Global TypeScript declarations for the SvelteKit environment, including custom module mocks (e.g., `$app/navigation`).
+- **`vite.config.ts`**: The Vite configuration where the `@tailwindcss/vite` plugin is registered.
 
-    export const PortfolioSummarySchema = z.object({
-      totalValue: z.number(), // Matches: let totalValue = $state(...)
-      dayChange: z.number(), // Matches: let dayChange = $state(...)
-      changePercent: z.number(), // Derived or added for completeness
-    });
+### 4. Git Management
+- **`.gitignore`**: Prevents binary dependencies (`node_modules`), build artifacts (`dist`, `.svelte-kit`), and generated Go code (`go/gen`) from entering the repo.
+- **`.gitattributes`**: Ensures consistent line endings across OSs and identifies polyglot files for GitHub's language detection.
 
-    export type PortfolioSummary = z.infer<typeof PortfolioSummarySchema>;
-
-    export const schemas = {
-      PortfolioSummary: PortfolioSummarySchema,
-    };
-
-    // ------------------------------------
-    // Zodios API Definition
-    //
-    // Why Zodios?
-    // 1. Strict Typing: Bridges the API and Zod schemas, enforcing type safety at the network boundary.
-    // 2. Autocomplete: Generates a typed client with autocomplete for endpoints and parameters.
-    // 3. RxJS Synergy: Speeds up development by ensuring API data *guaranteed* matches the BehaviorSubject's 
-    //    expected Zod schema, eliminating manual validation code and type casting in your streams.
-    // ------------------------------------
-
-    const endpoints = makeApi([
-      {
-        method: "get",
-        path: "/portfolio/summary",
-        alias: "portfolio#summary",
-        requestFormat: "json",
-        parameters: [
-          {
-            name: "X-User-ID",
-            type: "Header",
-            schema: z.string(),
-          },
-        ],
-        response: PortfolioSummarySchema,
-      },
-    ]);
-
-    export const api = new Zodios(endpoints);
-
-    export function createApiClient(baseUrl: string, options?: ZodiosOptions) {
-      return new Zodios(baseUrl, endpoints, options);
-    }
-      
-    ```
-
-2.  **Create RxJS Service with Demo Data**:
-    - **Path**: `ts/src/services/PortfolioService.ts`
-    - Initialize the `BehaviorSubject` with **Demo Data** matching the schema. Do not call APIs yet.
-
-    ```typescript
-    import { BehaviorSubject } from 'rxjs';
-    import { z } from 'zod';
-    import { schemas, createApiClient, api } from '../schema/portfolio';
-
-    export type PortfolioSummary = z.infer<typeof schemas.PortfolioSummarySchema>;
-    export const PortfolioSummarySchema = schemas.PortfolioSummarySchema;
-    type ApiClient = typeof api;
-
-    export interface PortfolioConfig {
-      apiBaseUrl: string;
-      apiClient?: ApiClient;
-    }
-
-    export class PortfolioService {
-      // Initialize with Demo Data for immediate UI feedback
-      private _summary$ = new BehaviorSubject<PortfolioSummary | null>({
-        totalValue: 125000.5,
-        dayChange: 1250.0,
-        percentChange: 1.0,
-      });
-
-      // RxJS BehaviorSubjects
-      private _loading$ = new BehaviorSubject<boolean>(false);
-      private _error$ = new BehaviorSubject<string | null>(null);      
-
-      // RxJS Observables
-      public summary$ = this._summary$.asObservable();
-      public loading$ = this._loading$.asObservable();
-      public error$ = this._error$.asObservable();
-
-      // Declare apiClient local variable for RxJS
-      private apiClient!: ApiClient;
-
-      constructor(config: PortfolioConfig = { apiBaseUrl: "http://localhost:8000" }) {
-        this.setConfig(config);
-      }      
-
-      public setConfig(config: PortfolioConfig) {
-        if (config.apiClient) {
-            this.apiClient = config.apiClient;
-        } else {
-            this.apiClient = createApiClient(config.apiBaseUrl);
-        }
-      }
-
-      public async fetchSummary() {
-        this._loading$.next(true);
-        this._error$.next(null);
-        try {
-            const summary = await this.apiClient.get("/portfolio/summary", {
-                headers: { 'X-User-ID': 'demo-user' }
-            });
-            this.summary = summary;
-        } catch (e: any) {
-            console.error('PortfolioService fetch error:', e);
-            this._error$.next(e.message || "Failed to fetch portfolio summary");
-        } finally {
-            this._loading$.next(false);
-        }
-      }
-
-      public set summary(summary: PortfolioSummary) {
-        this._summary$.next(summary);
-      }
-
-      public get summary() {        
-          return this._summary$.getValue();
-      }
-
-    }
-
-    export const portfolioService = new PortfolioService();
-    ```
+### 5. Reproduced Builds (`pnpm-lock.yaml`)
+**NEVER edit this file manually.** It guarantees that every developer and CI run uses the exact same dependency versions. Always run `pnpm install` after changing `package.json`.
 
 ---
 
-### Phase 3: Connect UI to Shared State (Runes Integration)
+## 🏗️ Building from Scratch: Module Initialization
 
-**Goal**: Replace local hardcoded variables with the shared reactive state.
+Before starting the 9-step workflow, you must initialize the polyglot structure.
 
-1.  **Create Rune Adapter**:
-    - **Path**: `sveltekit/src/lib/runes/PortfolioState.svelte.ts`
-    - Import the Zod type and RxJS service.
-    
-    ```typescript
-    import { portfolioService, type PortfolioSummary, PortfolioSummarySchema } from '@modules/portfolio-ts';
+### 1. Directory Structure
+Create the following directory structure for your module (e.g., `modules/[module-name]`):
 
-    export class PortfolioState {
-      // Svelte 5 Rune State
-      summary = $state<PortfolioSummary | null>(portfolioService.currentState.summary);
-      loading = $state<boolean>(portfolioService.currentState.loading);
-      error = $state<string | null>(portfolioService.currentState.error);
+```bash
+[module-name]/
+├── go/                   # Backend Layer (Goa)
+│   ├── design/           # API Contract DSL
+│   └── pkg/              # Logic Implementation
+├── ts/                   # Shared Layer (RxJS/Zod)
+│   └── src/
+│       ├── lib/          # API Client & Schemas
+│       └── services/     # Reactive Services
+└── sveltekit/            # UI Layer (Svelte 5)
+    └── src/lib/
+        ├── widgets/      # Components & Stories
+        └── runes/        # UI State Adapter
+```
 
-      constructor() {
-        // Subscribe to live updates
-        portfolioService.summary$.subscribe((value) => {
-            try {
-                // Validate incoming data
-                PortfolioSummarySchema.parse(value);
-                this.summary = value;
-            } catch (e) {
-                console.error("Invalid portfolio summary update:", e);
-                this.error = "Invalid data received";
-            }
-        });
+### 2. Workspace Configuration
+To integrate your module into the [ta-workspace](https://github.com/reidlai/ta-workspace), update these core files in the workspace root:
 
-        portfolioService.loading$.subscribe((value) => {
-            this.loading = value;
-        });
+- **`pnpm-workspace.yaml`**: 
+  ```yaml
+  packages:
+    - "modules/[module-name]/**"
+  ```
+- **`.moon/workspace.yml`**:
+  ```yaml
+  projects:
+    - 'modules/[module-name]'
+    - 'modules/[module-name]/go'
+    - 'modules/[module-name]/ts'
+    - 'modules/[module-name]/sveltekit'
+  ```
+- **`go.work`**:
+  ```go
+  use ./modules/[module-name]/go
+  ```
 
-        portfolioService.error$.subscribe((value) => {
-            this.error = value;
-        });
-      }
+### 3. Moon Projects Setup
+Each layer requires a `moon.yml` to define its tasks. Use the following patterns as your standard:
+
+#### Go Layer (`go/moon.yml`)
+```yaml
+tasks:
+  build:
+    command: "go build -v ./..."
+    inputs: ["**/*.go", "go.mod"]
+  test:
+    command: "go test -v ./..."
+    inputs: ["**/*.go"]
+  lint:
+    command: "golangci-lint run"
+    inputs: ["**/*.go", ".golangci.yml"]
+  format:
+    command: "goimports -w ."
+  goa-gen:
+    command: "goa gen github.com/reidlai/ta-workspace/modules/[module]/go/design"
+    inputs: ["design/*.go"]
+```
+
+#### TypeScript Layer (`ts/moon.yml`)
+```yaml
+tasks:
+  build:
+    command: "tsc"
+    inputs: ["src/**/*", "tsconfig.json"]
+  lint:
+    command: "eslint src"
+  format:
+    command: "prettier --write src"
+```
+
+#### SvelteKit Layer (`sveltekit/moon.yml`)
+```yaml
+tasks:
+  dev:
+    command: "vite dev"
+    local: true
+  build:
+    command: "vite build"
+  test:
+    command: "vitest run"
+  lint:
+    command: "eslint src"
+  format:
+    command: "prettier --write src"
+  storybook:
+    command: "storybook dev -p 6006"
+    local: true
+  sync:
+    command: "svelte-kit sync"
+  check:
+    command: "svelte-check"
+```
+
+#### Root aggregated tasks (`moon.yml`)
+Define these at the module root to run tasks across all layers simultaneously:
+```yaml
+tasks:
+  build:
+    deps: ["go:build", "ts:build", "sveltekit:build"]
+  test:
+    deps: ["go:test", "ts:test", "sveltekit:test", "sveltekit:check"]
+  lint:
+    deps: ["go:lint", "ts:lint", "sveltekit:lint"]
+  format:
+    deps: ["go:format", "ts:format", "sveltekit:format"]
+```
+
+---
+
+
+## 🛡️ DevSecOps & CI/CD Setup
+
+Every module must maintain a high security and quality bar before code reaches the host.
+
+### 1. GitHub Actions (CI)
+The definitive CI pipeline for all modules. It executes in six distinct stages:
+1. **SCA**: `govulncheck` and `pnpm audit`.
+2. **Linting**: Prettier and Go format checks.
+3. **Quality**: Go vet and `moon lint`.
+4. **Testing**: `moon test` (Vitest/Go).
+5. **SAST**: `gosec` and `semgrep`.
+6. **Threat Modelling**: automated `pytm` sequence diagram generation.
+
+### 2. Local Quality Gates (Pre-commit)
+Enable local validation by configuring `.pre-commit-config.yaml`. This ensures that failing code cannot be committed.
+
+> [!TIP]
+> **Reference Examples**
+> 
+> See the production-ready configurations in:
+> - [portfolio/.pre-commit-config.yaml](file:///home/reidlai/GitLocal/ta-workspace/modules/portfolio/.pre-commit-config.yaml)
+> - [watchlist/.pre-commit-config.yaml](file:///home/reidlai/GitLocal/ta-workspace/modules/watchlist/.pre-commit-config.yaml)
+
+#### Setup
+```bash
+# Install hooks
+pre-commit install
+
+# Run manually
+pre-commit run --all-files
+```
+
+Essential hooks include:
+- `trailing-whitespace`: Trims unnecessary spaces.
+- `end-of-file-fixer`: Ensures files end with a newline.
+- `go-mod-tidy` & `go-fmt`: Maintains Go backend health.
+- `prettier`: Enforces consistent JS/TS/CSS formatting.
+- `semgrep`: Performs automated security audits.
+
+
+### 3. Threat Modelling (`threat_modelling/`)
+We use **PyTM** to map architectural components to security threats. The `tm.py` script generates data flow diagrams and reports based on the module's design.
+
+#### Setup
+1. **Python**: Ensure Python 3.10+ is installed.
+2. **Dependencies**: Install `graphviz` (required for diagram rendering) and the `pytm` library.
+   ```bash
+   # Install Graphviz (macOS)
+   brew install graphviz
+
+   # Install PyTM
+   pip install pytm
+   ```
+
+---
+
+## 🚀 Build Lifecycle & Operational Insights
+
+### 1. The Build Lifecycle
+Running `moon build` at the root initiates a coordinated build process:
+1. **Transpilation**: `tsc` converts TypeScript services in `ts/` to pure JavaScript.
+2. **Bundling**: Vite (via SvelteKit) bundles the UI components, optimizing assets and performing tree-shaking.
+3. **Compilation**: `go build` compiles the Go backend into an executable binary.
+4. **Artifacts**: 
+   - UI artifacts are generated in `sveltekit/dist/`.
+   - Node packages are published to local `node_modules` for sibling consumption.
+   - Go binaries are typically located in `go/bin/`.
+
+### 2. Operational Discipline
+- **State SSOT**: Always derive UI state from RxJS services to ensure consistency across the "adapter" boundary.
+- **Contract First**: Changes to the API MUST start in the Goa DSL before any implementation begins.
+- **Security Gates**: Code cannot reach `main` if CI pipeline or pre-commit hooks fail.
+
+---
+
+## 📘 Tutorial: The 9-Step UI-First Workflow
+
+This tutorial demonstrates the workflow by building a generic **"Summary"** widget.
+
+### Step 1: Create UI Component
+**Path**: `sveltekit/src/lib/widgets/SummaryWidget.svelte`
+
+Focus on the visual layout using **ShadCN Svelte** and Svelte 5 `$state`. Use hardcoded local variables for immediate feedback.
+
+```svelte
+<script lang="ts">
+  import { Card, CardContent } from "$lib/components/ui/card";
   
-    }
-    
-    // Export as global singleton
-    export const portfolioState = new PortfolioState();
-    ```
+  // Use $props() for external control, $state() for local prototyping
+  let { title = "Summary" } = $props();
+  let value = $state(100.00); // Visual prototype
+</script>
 
-2.  **Update Widget**:
-    - **Path**: `sveltekit/src/lib/widgets/PortfolioSummaryWidget.svelte`
-    - Replace local variables with the Rune state.
+<Card>
+  <CardContent>
+    <div class="text-xl font-bold">{title}</div>
+    <div class="text-2xl">${value}</div>
+  </CardContent>
+</Card>
+```
 
-    ```svelte
-    <script lang="ts">
-      import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card";
+### Step 2: Create Local Types for Storybook
+**Path**: `sveltekit/src/lib/widgets/SummaryWidget.types.ts`
 
-      // Commented out for now
-      // // 1. Define Design-Time State (Local Variables)
-      // let ( totalValue = 125000.50, dayChange = 1250.00, changePercent = 1.0) = $props();
+Define a flattened props interface specifically for **Storybook controls and actions**. This allows you to manipulate every aspect of the UI in isolation.
 
-      // New Added >>>
+```typescript
+/**
+ * Flattened props interface for Storybook controls
+ */
+export interface ISummaryWidgetStory {
+    value?: number;
+    title?: string;
+    loading?: boolean;
+    error?: string | null;
+    onRefresh?: () => void; // Control for testing behavior
+}
+```
 
-      // Import the Rune state
-      import { portfolioSummaryState } from "../runes/PortfolioSummaryState.svelte";
+### Step 3: Create Storybook Scenarios
+**Path**: `sveltekit/src/lib/widgets/SummaryWidget.stories.ts`
 
-      // Used for Storybook to override the global state.
-      // We define this interface to allow parent components (like Storybook stories) to inject key data points directly,
-      // bypassing the global stream if needed.
-      interface Props {
-          currency?: string;
-          balance?: number;
-          changePercent?: number;
-      }
-      // We rename the incoming props (e.g., currency -> currencyProp) to avoid naming collisions.
-      // This allows us to declare derived values with the clean names (e.g., 'currency') below,
-      // which serve as the single source of truth for the template by coalescing the prop override and the global state.
-      let {
-        currency: currencyProp,
-        balance: balanceProp,
-        changePercent: changePercentProp,
-      }: Props = $props();
+Validate the UI artifacts with stakeholders using realistic scenarios (Loading, Error, Success).
 
-      // New Add <<<< END
+```typescript
+import type { Meta, StoryObj } from "@storybook/svelte";
+import SummaryWidget from "./SummaryWidget.svelte";
 
-      // 2. Define Derived State
-      //
-      // Reactivity Source: When you write let { changePercent } = $props(), Svelte's compiler interprets changePercent as a reactive value (conceptually, it's like a 
-      // signal getter).
-      // Dependency Tracking: The $derived(...) rune automatically "watches" any reactive values used inside it. Since getChangeColor(changePercent) reads 
-      // changePercent, a dependency is established.         
-      let changeSign = $derived(getChangeSign(changePercent))
+const meta = {
+  title: "Widgets/Summary",
+  component: SummaryWidget,
+  argTypes: {
+    value: { control: "number" },
+  },
+} satisfies Meta<SummaryWidget>;
 
-      function getChangeSign(changePercent: number): string {
-        if (changePercent > 0.0) {
-            return "+";
-        } 
-        return "";
-      }              
-    </script>
+export default meta;
+type Story = StoryObj<typeof meta>;
 
-    <Card>
-      <CardHeader><CardTitle>Portfolio Value</CardTitle></CardHeader>
-      <CardContent>
-          <!-- Now driven by Shared State -->
-          <div class="text-2xl font-bold">${portfolioSummaryState.summary.totalValue}</div>
-          <div class="text-sm text-muted-foreground">+${portfolioSummaryState.summary.dayChange} ({portfolioSummaryState.summary.percentChange}%)</div>
-      </CardContent>
-    </Card>
+export const Default: Story = { args: { value: 125.50 } };
+export const Loading: Story = { args: { loading: true } };
+```
 
-    ```
+### Step 4: Define State Interface & Rune
+**Path**: `sveltekit/src/lib/runes/SummaryState.svelte.ts`
+
+Define the **State Interface** that maps your domain data to the UI. Then, create the **State Rune** (Adapter) that implements this interface using Svelte 5 `$state`.
+
+```typescript
+/**
+ * Interface for the UI state, implemented by the Rune
+ */
+export interface ISummaryState {
+    value: number;
+    loading: boolean;
+    error: string | null;
+}
+
+export class SummaryState implements ISummaryState {
+  // Svelte 5 Signal-based state implementation
+  value = $state(0);
+  loading = $state(false);
+  error = $state<string | null>(null);
+
+  // Note: Subscription logic (Service -> Rune) will be added in Step 9
+}
+
+export const summaryState = new SummaryState();
+```
+
+### Step 5: Create Goa Design DSL
+**Path**: `go/design/design.go`
+
+Define the API contract in Go. This DSL should mirror the requirements discovered in Step 2. Use `JWTSecurity` if the endpoint requires authentication.
+
+```go
+var SummaryType = Type("Summary", func() {
+    Attribute("value", Float64, "Summary value")
+    Required("value")
+})
+
+var _ = Service("summary", func() {
+    Method("get", func() {
+        Result(SummaryType)
+        HTTP(func() { GET("/summary") })
+    })
+})
+```
+
+### Step 6: Generate API Server Interface
+**Command**: `moon run [module-name]-go:goa-gen`
+
+Run the Goa generator to create the transport layer and the service interfaces. This creates the `go/gen` directory which should generally not be committed unless explicitly required.
+
+### Step 7: Implement API Server
+**Path**: `go/pkg/service.go`
+
+Implement the logic that satisfies the interface generated in Step 6. Use Dependency Injection for logging and database access.
+
+```go
+func (s *summarySvc) Get(ctx context.Context) (*summary.Summary, error) {
+    // Logic goes here
+    return &summary.Summary{Value: 125.50}, nil
+}
+```
+
+### Step 8: Generate TypeScript API Client
+**Path**: `ts/lib/api-client.ts`
+
+Use Goa-generated OpenAPI specs to create a **Zodios** client. This ensures the frontend and backend share the exact same Zod validation schemas.
+
+```typescript
+import { makeApi, Zodios } from "@zodios/core";
+import { z } from "zod";
+
+const Summary = z.object({ value: z.number() });
+
+export const api = new Zodios([
+  {
+    method: "get",
+    path: "/summary",
+    response: Summary,
+  },
+]);
+```
+
+### Step 9: Full Integration (RxJS + Runes)
+**Path**: `ts/src/services/SummaryRxService.ts`
+
+Bridge the API client with reactive streams. Perform any necessary **payload transformations** here to simplify the data for Svelte Runes.
+
+```typescript
+export class SummaryRxService {
+  private _data$ = new BehaviorSubject({ value: 0 });
+  public data$ = this._data$.asObservable();
+
+  async fetch() {
+    const res = await api.get("/summary");
+    this._data$.next(res); // Validated by Zodios automatically
+  }
+}
+```
+
+Finally, update `SummaryState.svelte.ts` (Step 4) to subscribe to this service.
 
 ---
 
-### Phase 4: Backend Contract (Goa DSL)
-
-**Goal**: Design an **Experience API** optimized for the UI's needs. The API structure should mirror the Runes/RxJS state requirements to minimize frontend data transformation and facilitate efficient navigation. This layer also acts as an orchestration point, capable of integrating with **Workflow Engines** (e.g., Temporal) or lower-level **Business APIs** to reuse back-office capabilities.
-
-1.  **Map Zod to Goa**:
-    - **Path**: `go/design/design.go`
-    - Translate `ts/src/schema/portfolio.ts` -> Goa DSL.
-
-    Recommendation: Use coding assistant to generate the Goa DSL. Example prompt: "can you read Zodios API from moduels/portfolio/ts/src/schema/portfolio.ts and update Goa Design DSL in modules/portfolio/go/design/portfolio.go"
-
-    ```go
-    import . "goa.design/goa/v3/dsl" // Imports JWTSecurity, Type, Service, etc.
-
-    // Match Zod: { totalValue: number, dayChange: number ... }
-    var PortfolioSummary = Type("PortfolioSummary", func() {
-         Attribute("totalValue", Float64)  // Maps to z.number()
-         Attribute("dayChange", Float64)   // Maps to z.number()
-         Attribute("percentChange", Float64) // Maps to z.number()
-         Required("totalValue", "dayChange") // required fields
-    })
-
-    // Define the Security Scheme
-    var JWTAuth = JWTSecurity("jwt", func() {
-        Description("JWT-based authentication using Bearer tokens")
-        Scope("api:read", "Read access")
-        Scope("api:write", "Write access")
-        TokenPath("sub")  // or "user_id" if that's your claim name        
-    })
-
-    var _ = Service("portfolio", func() {
-         // 1. Define Errors common to the service
-         Error("unauthorized", String, "Missing or invalid token")
-         Error("not_found", String, "Portfolio not found for user")
-
-         // 2. Define Security (e.g., JWT)
-         Security(JWTAuth, func() {
-             Scope("api:read")   
-         })
-
-         Method("getPortfolioSummary", func() {
-             Description("Get portfolio summary for the authenticated user")
-             Payload(func() {
-                 Attribute("userId", String)
-                 // 1. Define attribute to hold the header value
-                 Attribute("traceID", String, "Trace ID for distributed tracing")
-                 Required("userId")
-             })
-             Security(JWTAuth, func() {
-                 Scope("api:read")   
-             })
-
-             Result(PortfolioSummary)
-
-             // 3. Map Errors to HTTP Status Codes
-             HTTP(func() {
-                GET("/portfolio/summary")
-
-                // 2. Bind payload attribute "traceID" to HTTP Header "X-Trace-ID"
-                Header("traceID:X-Trace-ID")
-                Header("userId:X-User-ID")
-
-                Response(StatusOK)
-                Response("unauthorized", StatusUnauthorized)
-                Response("not_found", StatusNotFound)
-             })
-         })
-    })
-    ```
-
-2.  **Generate & Implement**:
-    - Run `moon run portfolio-go:goa-gen`.
-    - **Generated Files**:
-      - `gen/portfolio/service.go`: Contains the `Service` interface you must implement.
-      - `gen/http/`: Contains the HTTP server/client transport code.
-      - `gen/portfolio/views/`: Contains view rendering logic.
-
-3.  **Implement & Inject**:
-    - **Implement**: Create `go/pkg/portfolio_service.go` implementing the interface in `go/gen/portfolio/service.go`.
-    - **Inject**: In the Host App (`apps/ta-server/cmd/api-server.go`), wire it into the **Chi Router**:
-
-    ```go
-    // apps/ta-server/internal/di/services.go
-
-    // Internal Modules
-    portfolio "github.com/reidlai/ta-workspace/modules/portfolio/go/pkg"
-
-    // Generated Interfaces
-    portfolioGen "github.com/reidlai/ta-workspace/modules/portfolio/go/gen/portfolio"    
-
-    // Services holds the initialized endpoints for the server.
-    type Services struct {
-	      PortfolioEndpoints *portfolioGen.Endpoints
-    }
-
-    // NewServices initializes the services and endpoints.
-    func NewServices(logger *slog.Logger) *Services {
-      var (
-        portfolioSvc portfolioGen.Service
-      )
-      {
-        portfolioSvc = portfolio.NewPortfolio(logger)
-      }
-
-      var (
-        portfolioEndpoints *portfolioGen.Endpoints
-      )
-      {
-        portfolioEndpoints = portfolioGen.NewEndpoints(portfolioSvc)
-        portfolioEndpoints.Use(debug.LogPayloads())
-      }
-
-      return &Services{
-        PortfolioEndpoints: portfolioEndpoints,
-      }
-    }
-    ```
-
-    ```go
-    // apps/ta-server/internal/internal/server/run.go
-
-    package server
-
-    import (
-      "context" 
-      "fmt"
-      "log/slog"
-      "net"
-      "net/url"
-      "os"
-      "os/signal"
-      "sync"
-      "syscall"
-
-      "github.com/reidlai/ta-workspace/apps/go-server/internal/di"
-    )
-
-    // Run initializes and starts the API server.
-    func Run(ctx context.Context, cfg Config) error {
-      // Setup Slog
-      var level slog.Level
-      switch cfg.LogLevel {
-      case "DEBUG":
-        level = slog.LevelDebug
-      case "WARN":
-        level = slog.LevelWarn
-      case "ERROR":
-        level = slog.LevelError
-      default:
-        level = slog.LevelInfo
-      }
-
-      if cfg.Debug {
-        level = slog.LevelDebug
-      }
-
-      var handler slog.Handler
-      opts := &slog.HandlerOptions{
-        Level: level,
-        ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-          // GCP Mapping
-          if a.Key == slog.LevelKey {
-            a.Key = "severity"
-          }
-          if a.Key == slog.MessageKey {
-            a.Key = "message"
-          }
-          if a.Key == "trace_id" {
-            a.Key = "logging.googleapis.com/trace"
-          }
-          if a.Key == "span_id" {
-            a.Key = "logging.googleapis.com/spanId"
-          }
-          return a
-        },
-      }
-
-      if cfg.LogFormat == "json" {
-        handler = slog.NewJSONHandler(os.Stdout, opts)
-      } else {
-        handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})
-      }
-
-      logger := slog.New(handler)
-      slog.SetDefault(logger)
-
-      logger.InfoContext(ctx, "Logger initialized",
-        "level", level.String(),
-        "format", cfg.LogFormat,
-      )
-
-      // Initialize services via DI container
-      services := di.NewServices(logger)
-      portfolioEndpoints := services.PortfolioEndpoints
-
-      // Create channel for signal handling
-      errc := make(chan error)
-
-      // Setup interrupt handler
-      go func() {
-        c := make(chan os.Signal, 1)
-        signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-        errc <- fmt.Errorf("%s", <-c)
-      }()
-
-      var wg sync.WaitGroup
-      // Use the provided context, but also ensure cancellation capability
-      ctx, cancel := context.WithCancel(ctx)
-      defer cancel()
-
-      // Build URL
-      scheme := "http"
-      if cfg.Secure {
-        scheme = "https"
-      }
-      addr := fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port)))
-      u, err := url.Parse(addr)
-      if err != nil {
-        return fmt.Errorf("invalid URL %s: %w", addr, err)
-      }
-
-      // Start HTTP server
-      HandleHTTPServer(ctx, u, portfolioEndpoints, &wg, errc, logger, cfg.Debug)
-
-      // Wait for signal
-      logger.InfoContext(ctx, "exiting", "signal", <-errc)
-
-      // Send cancellation signal
-      cancel()
-
-      wg.Wait()
-      logger.InfoContext(ctx, "exited")
-      return nil
-    }
-    ```
-
-    ```go
-    package server
-
-    import (
-      "context"
-      "log/slog"
-      "net/http"
-      "net/url"
-      "sync"
-      "time"
-
-      portfoliosvr "github.com/reidlai/ta-workspace/modules/portfolio/go/gen/goa/http/portfolio/server"
-      portfolio "github.com/reidlai/ta-workspace/modules/portfolio/go/gen/goa/portfolio"
-
-      chimiddleware "github.com/go-chi/chi/v5/middleware"
-      "go.opentelemetry.io/otel/trace"
-      "goa.design/clue/debug"
-      goahttp "goa.design/goa/v3/http"
-    )
-
-    // HandleHTTPServer starts configures and starts a HTTP server on the given
-    // URL. It shuts down the server if any error is received in the error channel.
-    func HandleHTTPServer(ctx context.Context, u *url.URL, portfolioEndpoints *portfolio.Endpoints, wg *sync.WaitGroup, errc chan error, logger *slog.Logger, dbg bool) {
-
-      // Provide the transport specific request decoder and response encoder.
-      // The goa http package has built-in support for JSON, XML and gob.
-      // Other encodings can be used by providing the corresponding functions,
-      // see goa.design/implement/encoding.
-      var (
-        dec = goahttp.RequestDecoder
-        enc = goahttp.ResponseEncoder
-      )
-
-      // Build the Goa muxer (uses Chi internally)
-      var mux goahttp.Muxer
-      {
-        mux = goahttp.NewMuxer()
-        if dbg {
-          // Mount pprof handlers for memory profiling under /debug/pprof.
-          debug.MountPprofHandlers(debug.Adapt(mux))
-          // Mount /debug endpoint to enable or disable debug logs at runtime.
-          debug.MountDebugLogEnabler(debug.Adapt(mux))
-        }
-      }
-
-      // Wrap the endpoints with the transport specific layers. The generated
-      // server packages contains code generated from the design which maps
-      // the service input and output data structures to HTTP requests and
-      // responses.
-      var (
-        portfolioServer *portfoliosvr.Server
-      )
-      {
-        eh := errorHandler(ctx, logger)
-        portfolioServer = portfoliosvr.New(portfolioEndpoints, mux, dec, enc, eh, nil)
-      }
-
-      // Configure the mux.
-      portfoliosvr.Mount(mux, portfolioServer)
-
-      var handler http.Handler = mux
-      // Apply Chi middleware for performance and resilience
-      handler = chimiddleware.RequestID(handler)
-      handler = chimiddleware.RealIP(handler)
-      handler = chimiddleware.Recoverer(handler)
-
-      // Inject Slog Logger with Trace Context
-      handler = SlogMiddleware(logger)(handler)
-
-      if dbg {
-        // Log query and response bodies if debug logs are enabled.
-        handler = debug.HTTP()(handler)
-      }
-
-      // Start HTTP server using default configuration, change the code to
-      // configure the server as required by your service.
-      srv := &http.Server{Addr: u.Host, Handler: handler, ReadHeaderTimeout: time.Second * 60}
-      for _, m := range portfolioServer.Mounts {
-        logger.InfoContext(ctx, "HTTP handler mounted", "method", m.Method, "verb", m.Verb, "pattern", m.Pattern)
-      }
-
-      (*wg).Add(1)
-      go func() {
-        defer (*wg).Done()
-
-        // Start HTTP server in a separate goroutine.
-        go func() {
-          logger.InfoContext(ctx, "HTTP server listening", "host", u.Host)
-          errc <- srv.ListenAndServe()
-        }()
-
-        <-ctx.Done()
-        logger.InfoContext(ctx, "shutting down HTTP server", "host", u.Host)
-
-        // Shutdown gracefully with a 30s timeout.
-        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-        defer cancel()
-
-        err := srv.Shutdown(ctx)
-        if err != nil {
-          logger.ErrorContext(ctx, "failed to shutdown", "error", err)
-        }
-      }()
-    }
-
-    // errorHandler returns a function that writes and logs the given error.
-    // The function also writes and logs the error unique ID so that it's possible
-    // to correlate.
-    func errorHandler(logCtx context.Context, logger *slog.Logger) func(context.Context, http.ResponseWriter, error) {
-      return func(ctx context.Context, w http.ResponseWriter, err error) {
-        logger.ErrorContext(ctx, "HTTP Error", "error", err)
-      }
-    }
-
-    // SlogMiddleware extracts OTel trace IDs and injects a logger into the context.
-    func SlogMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
-      return func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-          ctx := r.Context()
-          span := trace.SpanFromContext(ctx)
-
-          // Inject trace_id and span_id if available (and valid) across all environments
-          reqLogger := logger
-          if span.SpanContext().IsValid() {
-            // We attach the trace info to the logger's attributes.
-            // For the JSON/GCP handler (Phase 3), the ReplaceAttr function handles mapping these keys
-            // to logging.googleapis.com/trace, etc.
-            // For Text/Dev handler (Phase 4), these just appear as normal attributes.
-            traceID := span.SpanContext().TraceID().String()
-            spanID := span.SpanContext().SpanID().String()
-
-            reqLogger = logger.With(
-              slog.String("trace_id", traceID),
-              slog.String("span_id", spanID),
-            )
-          }
-
-          // Log request start
-          reqLogger.InfoContext(ctx, "request started",
-            "method", r.Method,
-            "path", r.URL.Path,
-            "remote_addr", r.RemoteAddr,
-          )
-
-          // Update context with logger
-          // NOTE: We rely on standard context behavior. Services should use slog.Default() or
-          // take explicit logger. If services need to retrieve this logger from context,
-          // we would need a custom context key. For now, we assume simple usage or
-          // explicit passing. Services are refactored in Phase 5 to take *slog.Logger.
-          // Ideally, we'd have a ContextWithLogger helper if deep context extraction is needed.
-
-          next.ServeHTTP(w, r)
+## 🤖 AI Integration (MCP)
+
+**Goal**: Expose your module's logic to AI Agents (e.g., LangGraph) using the **Model Context Protocol (MCP)**.
+
+### 1. Define AI Tools in Goa
+Extend your service definition in `go/design/design.go` to include tool metadata.
+
+```go
+var _ = Service("summary", func() {
+    Method("get", func() {
+        // ... existing HTTP definition ...
+        
+        // Expose as an AI Tool
+        AI(func() {
+            Description("Fetch the current summary value for the user")
+            Tool("get_summary_value")
         })
-      }
-    }
-    ```
+    })
+})
+```
 
+### 2. Implementation & Registration
+1. **Regenerate**: `moon run [module-name]-go:goa-gen`.
+2. **Inject**: In the Host App Shell (`apps/mcp-server`), register the tool logic.
+
+```go
+// apps/mcp-server/main.go
+summarySvc := summary.NewService(logger)
+mcpServer.RegisterTool("get_summary_value", summarySvc.Get)
+```
+
+By exposing tools directly from the Goa design, the AI agent automatically receives strictly typed schemas and descriptions, minimizing hallucination and ensuring protocol compliance.
 
 ---
 
-### Phase 5: AI Integration (Goa-AI + MCP)
+## 🔗 Cross-Module References
 
-**Goal**: Expose the service logic to AI Agents via Model Context Protocol (MCP) and inject into MCP Server AppShell.
+When one module needs to interact with another:
+- **Never direct dependencies**: Use the **Event Bus** or **Service Registry** via the AppShell.
+- **Shared Packages**: If common logic is needed, move it to the `virtual-module-core` or a shared `lib/` in the host.
+- **Versioning**: Each virtual module is a submodule; update the host reference to sync changes.
 
-1.  **Define MCP Tool in Goa DSL**:
-    - **Path**: `go/design/design.go` (Update)
-    - Use `goa.design/ai` DSL to expose methods as AI tools.
+---
 
-    ```go
-    import (
-        . "goa.design/goa/v3/dsl"
-        . "goa.design/ai/dsl" // Integration
-    )
+## 🛠️ Verification Checklist
 
-    var _ = Service("portfolio", func() {
-        // ... existing definition ...
+- [ ] UI rendered in Storybook with mock scenarios.
+- [ ] Goa DSL matches Zod schemas (Step 5 vs Step 8).
+- [ ] RxJS services validate data via Zod.
+- [ ] Local pre-commit hooks passed.
+- [ ] Moon-level tasks (`moon run :test`) passed.
 
-        Method("getPortfolioSummary", func() {
-            // ... HTTP definitions ...
-
-            // Define AI Tool Exposure
-            AI(func() {
-                 Description("Get portfolio summary for the current user")
-                 Tool("get_portfolio_summary")
-            })
-        })
-    })
-    ```
-
-2.  **Generate MCP Server Stubs**:
-    - Run `moon run portfolio-go:goa-gen`.
-    - This generates the tool definitions and interface code.
-
-3.  **Inject into MCP Server AppShell**:
-    - The MCP Server AppShell (`apps/mcp-server`) acts as the host.
-    - Inject your module's service implementation into the MCP host at runtime (similar to HTTP server injection).
-
-    ```go
-    // apps/mcp-server/main.go
-    // ...
-    portfolioSvc := portfolio.NewPortfolioService(logger, db)
-    mcpServer.RegisterTool("get_portfolio_summary", portfolioSvc.GetPortfolioSummary)
-    ```
-
-4.  **Connect AI Agent**:
-    - AI Agents (e.g. LangGraph) connect to the MCP Server via SSE or Stdio.
-    - The Agent automatically discovers `get_portfolio_summary` and calls it when needed using the strictly typed schema.
+For further assistance, consult the [VIRTUAL-MODULE-ARCHITECTURE.md](VIRTUAL-MODULE-ARCHITECTURE.md).
