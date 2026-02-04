@@ -3,40 +3,40 @@
   "version": "0.1.0",
   "description": "Core module system with DI container, module registry, and TypeScript interfaces",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./sveltekit/dist/index.js",
+  "module": "./sveltekit/dist/index.js",
+  "types": "./sveltekit/dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./sveltekit/dist/index.d.ts",
+      "import": "./sveltekit/dist/index.js"
     },
     "./di": {
-      "types": "./dist/di/index.d.ts",
-      "import": "./dist/di/index.js"
+      "types": "./sveltekit/dist/di/index.d.ts",
+      "import": "./sveltekit/dist/di/index.js"
     },
     "./registry": {
-      "types": "./dist/registry/index.d.ts",
-      "import": "./dist/registry/index.js"
+      "types": "./sveltekit/dist/registry/index.d.ts",
+      "import": "./sveltekit/dist/registry/index.js"
     },
     "./types": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/types/index.js"
+      "types": "./sveltekit/dist/types/index.d.ts",
+      "import": "./sveltekit/dist/types/index.js"
     }
   },
   "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
+    "sveltekit/dist",
+    "sveltekit/package.json",
+    "README.md"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
-    "dev": "tsc --project tsconfig.build.json --watch",
-    "clean": "rm -rf dist",
-    "prepare": "npm run build",
-    "test": "vitest run",
-    "lint": "eslint 'src/**/*.{ts,tsx}'",
-    "audit": "npm audit"
+    "build": "cd sveltekit && npm run build",
+    "dev": "cd sveltekit && npm run dev",
+    "clean": "cd sveltekit && npm run clean",
+    "prepare": "cd sveltekit && npm run build",
+    "test": "cd sveltekit && npm test",
+    "lint": "cd sveltekit && npm run lint",
+    "audit": "cd sveltekit && npm audit"
   },
   "keywords": [
     "dependency-injection",
