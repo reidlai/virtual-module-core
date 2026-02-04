@@ -1,0 +1,60 @@
+{
+    "name": "virtual-module-core",
+    "version": "0.1.0",
+    "description": "Core module system with DI container, module registry, and TypeScript interfaces",
+    "type": "module",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./di": {
+            "types": "./dist/di/index.d.ts",
+            "import": "./dist/di/index.js"
+        },
+        "./registry": {
+            "types": "./dist/registry/index.d.ts",
+            "import": "./dist/registry/index.js"
+        },
+        "./types": {
+            "types": "./dist/types/index.d.ts",
+            "import": "./dist/types/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc --project tsconfig.build.json",
+        "dev": "tsc --project tsconfig.build.json --watch",
+        "clean": "rm -rf dist",
+        "prepare": "npm run build",
+        "test": "vitest run",
+        "lint": "eslint 'src/**/*.{ts,tsx}'",
+        "audit": "npm audit"
+    },
+    "keywords": [
+        "dependency-injection",
+        "module-system",
+        "virtual-modules",
+        "appshell"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/reidlai/virtual-module-core.git"
+    },
+    "author": "Reid Lai",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "@typescript-eslint/eslint-plugin": "^8.52.0",
+        "@typescript-eslint/parser": "^8.52.0",
+        "eslint": "^9.39.2",
+        "typescript": "^5.3.0",
+        "vitest": "^4.0.16"
+    }
+}

@@ -6,6 +6,8 @@ A **framework-agnostic** core library for the Virtual Module Architecture. It pr
 
 ## Overview
 
+> **Note**: This is a polyglot repository. TypeScript/SvelteKit code is in [`sveltekit/`](sveltekit/), and Go code will be in `go/`. Import paths remain unchanged for npm consumers.
+
 Modern web apps often need to share features across different frameworks (SvelteKit, Next.js, etc.). `virtual-module-core` solves this by introducing an **Adapter Pattern**:
 
 1.  **Core Library**: Handles generic route matching, sorting, and conflict detection. It manages complete **Module Bundles** containing routes, widgets, and handlers.
