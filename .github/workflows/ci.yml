@@ -25,10 +25,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.11'
+          cache-dependency-path: go/go.mod
+
       - name: Install Dependencies
         run: |
           npm install
           pip install pytm semgrep detect-secrets
+          cd go && go mod download
 
       # Stage 1: SCA
       - name: SCA - NPM Audit
@@ -40,13 +47,40 @@ jobs:
         run: npx prettier --check .
         continue-on-error: true
 
-      # Stage 3: Code Quality
+      # Stage 3: Code Quality - JavaScript/TypeScript
       - name: Quality - ESLint
         run: npm run lint
 
-      # Stage 4: Unit Tests
-      - name: Test - Unit Tests
+      # Stage 3: Code Quality - Go
+      - name: Quality - Go Format Check
+        run: |
+          cd go
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Go files are not formatted. Run 'gofmt -w .' to fix."
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: Quality - golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: go
+          args: --timeout=5m
+
+      - name: Quality - Go Vet
+        run: cd go && go vet ./...
+
+      # Stage 4: Unit Tests - JavaScript/TypeScript
+      - name: Test - Unit Tests (JS/TS)
         run: npm test
+
+      # Stage 4: Unit Tests - Go
+      - name: Test - Unit Tests (Go)
+        run: |
+          cd go
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          go tool cover -func=coverage.out
 
       # Stage 5: SAST
       - name: SAST - Semgrep

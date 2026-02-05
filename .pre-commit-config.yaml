@@ -38,7 +38,7 @@ repos:
   # Stage 3: Code Quality (Local Hooks) & Stages 4, 5, 6
   - repo: local
     hooks:
-      # Stage 3: Code Quality
+      # Stage 3: Code Quality - JavaScript/TypeScript
       - id: eslint
         name: ESLint
         entry: npm run lint
@@ -47,11 +47,43 @@ repos:
         exclude: ^(\.agent|\.claude|\.github|\.specify|dist|node_modules|threat_modelling)/
         pass_filenames: false
 
-      # Stage 4: Unit Tests
+      # Stage 3: Code Quality - Go Formatting
+      - id: gofmt
+        name: Go Format
+        entry: gofmt -w
+        language: system
+        files: \.go$
+        pass_filenames: true
+
+      # Stage 3: Code Quality - Go Linting
+      - id: golangci-lint
+        name: golangci-lint
+        entry: bash -c 'cd go && golangci-lint run --fix'
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+      # Stage 3: Code Quality - Go Vet
+      - id: go-vet
+        name: Go Vet
+        entry: bash -c 'cd go && go vet ./...'
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+      # Stage 4: Unit Tests - JavaScript/TypeScript
       - id: unit-tests
-        name: Unit Tests
+        name: Unit Tests (JS/TS)
         entry: npm test
         language: system
+        pass_filenames: false
+
+      # Stage 4: Unit Tests - Go
+      - id: go-test
+        name: Unit Tests (Go)
+        entry: bash -c 'cd go && go test -v -race -coverprofile=coverage.out ./...'
+        language: system
+        files: \.go$
         pass_filenames: false
 
       # Stage 5: SAST
