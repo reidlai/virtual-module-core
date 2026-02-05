@@ -34,7 +34,6 @@ type Registrar interface {
 	Name() string
 }
 
-
 // MountPoint represents a single HTTP mount point for logging
 type MountPoint struct {
 	Method  string
