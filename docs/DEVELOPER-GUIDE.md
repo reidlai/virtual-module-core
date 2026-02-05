@@ -475,6 +475,155 @@ Finally, update `SummaryState.svelte.ts` (Step 4) to subscribe to this service.
 
 ---
 
+## 🔧 Go Backend Layer
+
+The backend logic of a Virtual Module is implemented in Go, using the **AppShell Architecture** to plug into the host server.
+
+### 1. Module Registration Interfaces
+
+All modules must implement specific interfaces to be loaded by the AppShell. These are defined in `virtual-module-core/go/pkg/module/modules.go`.
+
+#### The Base Interface
+Every module must implement `Registrar` to provide its name:
+
+```go
+type Registrar interface {
+    Name() string
+}
+```
+
+#### Capability Interfaces
+Modules declare their capabilities by implementing one or both of these interfaces:
+
+1.  **`HTTPRegistrar` (REST API)**
+    For modules that expose HTTP endpoints (Goa-generated). These are mounted on the global **Chi router**.
+
+    ```go
+    type HTTPRegistrar interface {
+        RegisterHTTP(
+            mux goahttp.Muxer,
+            dec func(*http.Request) goahttp.Decoder,
+            enc func(context.Context, http.ResponseWriter) goahttp.Encoder,
+            eh func(context.Context, http.ResponseWriter, error),
+        ) []MountPoint
+    }
+    ```
+
+2.  **`RESRegistrar` (Real-Time Sync)**
+    For modules that support the **RES Protocol** (via [Resgate](https://resgate.io)) for real-time state synchronization over NATS.
+
+    ```go
+    type RESRegistrar interface {
+        RegisterRES(resSvc *res.Service)
+    }
+    ```
+
+### 2. REST API with Chi Router + Goa
+
+When you run `moon goa-gen`, Goa generates the server transport code. You map this to the AppShell's Chi router in `RegisterHTTP`.
+
+- **Middleware Inheritance**: Your endpoints automatically inherit the AppShell's middleware stack (Logging, CORS, Recovery).
+- **Mount Points**: You return a list of `MountPoint` structs to help the AppShell log the registered routes at startup.
+
+### 3. RES Protocol with Resgate
+
+The RES protocol allows your module to push real-time updates to the frontend without writing WebSocket code.
+
+- **Resources**: You register "resources" (models or collections) like `library.book.{id}`.
+- **Handlers**: Define `Get`, `Access`, and `Call` handlers for each resource.
+- **Events**: Send events (e.g., `ChangeEvent`) to RESgate, which handles the WebSocket broadcast to active clients.
+
+### 4. Code Example: Complete Module
+
+Here is a complete example of a module implementing both interfaces.
+
+**Path**: `modules/summary/go/pkg/module.go`
+
+```go
+package summary
+
+import (
+    "context"
+    "net/http"
+
+    "github.com/jirenius/go-res"
+    "github.com/reidlai/virtual-module-core/go/pkg/module"
+    
+    // Goa generated packages
+    summary "github.com/reidlai/ta-workspace/modules/summary/go/gen/summary"
+    summarysvr "github.com/reidlai/ta-workspace/modules/summary/go/gen/http/summary/server"
+    goahttp "goa.design/goa/v3/http"
+)
+
+// Ensure SummaryModule implements the interfaces
+var _ module.Registrar = (*SummaryModule)(nil)
+var _ module.HTTPRegistrar = (*SummaryModule)(nil)
+var _ module.RESRegistrar = (*SummaryModule)(nil)
+
+type SummaryModule struct {
+    *module.Module          // Embed base module for common functionality
+    service summary.Service // The business logic interface
+}
+
+func NewSummaryModule(moduleName string, svc summary.Service) *SummaryModule {
+    return &SummaryModule{
+        Module:  module.NewModule(moduleName),
+        service: svc,
+    }
+}
+
+// 1. HTTP Registration (Goa + Chi)
+func (m *SummaryModule) RegisterHTTP(
+    mux goahttp.Muxer,
+    dec func(*http.Request) goahttp.Decoder,
+    enc func(context.Context, http.ResponseWriter) goahttp.Encoder,
+    eh func(context.Context, http.ResponseWriter, error),
+) []module.MountPoint {
+    
+    // Create the Goa HTTP server
+    server := summarysvr.New(m.service, mux, dec, enc, eh, nil)
+    
+    // Mount the endpoints to the muxer (Chi)
+    summarysvr.Mount(mux, server)
+
+    // Return mount points for startup logging
+    var mounts []module.MountPoint
+    for _, mp := range server.Mounts {
+        mounts = append(mounts, module.MountPoint{
+            Method:  mp.Method,
+            Verb:    mp.Verb,
+            Pattern: mp.Pattern,
+        })
+    }
+    return mounts
+}
+
+// 2. RES Registration (Real-Time)
+func (m *SummaryModule) RegisterRES(rs *res.Service) {
+    // Register a model resource: "summary.status"
+    rs.Handle("summary.status",
+        res.Access(res.AccessGranted),
+        res.GetModel(func(r res.ModelRequest) {
+            // Respond with current status
+            r.Model(map[string]interface{}{
+                "message": "System Operational",
+                "load":    45,
+            })
+        }),
+    )
+}
+```
+
+### 5. AppShell Integration (DI)
+
+In the Host App (`apps/go-server`), modules are instantiated and wired together using Dependency Injection.
+
+1.  **Instantiate Logic**: Create the core service struct (`service.go`).
+2.  **Wraps in Module**: Pass the service into `NewSummaryModule`.
+3.  **Register with Shell**: The AppShell iterates over all modules and calls `RegisterHTTP` and `RegisterRES`.
+
+---
+
 ## 🤖 AI Integration (MCP)
 
 **Goal**: Expose your module's logic to AI Agents (e.g., LangGraph) using the **Model Context Protocol (MCP)**.
