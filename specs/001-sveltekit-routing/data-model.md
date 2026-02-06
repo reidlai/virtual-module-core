@@ -6,12 +6,12 @@
 
 ## Core Entites (Generic)
 
-### `IParamsRoute` (The Standard Schema)
+### `IRoute` (The Standard Schema)
 
 **Purpose**: The canonical representation of a route in the Core system.
 
 ```typescript
-export interface IParamsRoute {
+export interface IRoute {
   /**
    * The normalized URL pattern.
    * - Must start with `/`
@@ -45,14 +45,14 @@ export interface IParamsRoute {
 
 ```typescript
 export interface RouteMatch {
-  route: IParamsRoute;
+  route: IRoute;
   params: Record<string, string>;
 
   /**
    * Ordered list of parent layout routes derived from path hierarchy.
    * Root -> Leaf
    */
-  layouts: IParamsRoute[];
+  layouts: IRoute[];
 }
 ```
 
@@ -76,7 +76,7 @@ export interface IFrameworkAdapter {
    * Parses the module resources and returns standard routes.
    * Performs normalization (e.g., [id] -> :id).
    */
-  parse(module: any): Promise<IParamsRoute[]>;
+  parse(module: any): Promise<IRoute[]>;
 }
 ```
 
@@ -89,7 +89,7 @@ export interface IFrameworkAdapter {
 ```mermaid
 graph LR
     A[Module Source] -->|SvelteKit syntax| B(SvelteKit Adapter)
-    B -->|Normalization| C[IParamsRoute Objects]
+    B -->|Normalization| C[IRoute Objects]
     C -->|Registration| D[Core Registry]
     D -->|Conflict Check| E{Valid?}
     E -->|Yes| F[Stored in Router]

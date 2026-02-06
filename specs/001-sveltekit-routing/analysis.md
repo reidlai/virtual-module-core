@@ -100,7 +100,7 @@ The current spec/plan/tasks are **not implementable** due to the fundamental con
 1. Reframe feature as "Generic Module Routing + SvelteKit Adapter"
 2. Define `IFrameworkAdapter` interface in core
 3. Split tasks into:
-   - Core Library: Generic `IParamsRoute`, `Router.match()`, conflict detection (20-25 tasks)
+   - Core Library: Generic `IRoute`, `Router.match()`, conflict detection (20-25 tasks)
    - SvelteKit Adapter: `sveltekit/` detection, `+page` parsing, `[param]` syntax (15-20 tasks)
 4. Move directory/file/syntax requirements to adapter spec
 

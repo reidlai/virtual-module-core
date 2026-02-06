@@ -19,7 +19,7 @@
 
 **Goal**: Define the interfaces that separate Core from Adapters.
 
-- [x] T001 Define `IParamsRoute` generic interface in `src/types/index.ts`
+- [x] T001 Define `IRoute` generic interface in `src/types/index.ts`
 - [x] T002 Define `IFrameworkAdapter` contract in `src/types/index.ts`
 - [x] T003 Export contracts from public API in `src/index.ts`
 
@@ -70,7 +70,7 @@
 
 - [x] T020 [US4] Implement error check for legacy `svelte/` directory
 - [x] T021 [P] [US4] Unit Test: Verify SvelteKit path normalization scenarios
-- [x] T022 [P] [US4] Unit Test: Verify full module parsing produces correct `IParamsRoute[]`
+- [x] T022 [P] [US4] Unit Test: Verify full module parsing produces correct `IRoute[]`
 
 ---
 

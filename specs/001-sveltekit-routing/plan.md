@@ -53,7 +53,7 @@ specs/001-sveltekit-routing/
 ```text
 src/
 ├── types/
-│   └── index.ts         # IParamsRoute (Generic), IFrameworkAdapter
+│   └── index.ts         # IRoute (Generic), IFrameworkAdapter
 ├── registry/
 │   ├── Router.ts        # Generic matching, sorting, layout resolution
 │   ├── Router.test.ts   # Generic routing tests
@@ -65,7 +65,7 @@ src/
 
 **Structure Decision**:
 
-- `IParamsRoute` is the canonical schema.
+- `IRoute` is the canonical schema.
 - `IFrameworkAdapter` is the contract.
 - SvelteKit logic is MOVED out of core `Router` into a reference adapter (or keeping a minimal reference implementation for validation, while actual production adapters might live in App Shell, keeping core pure). _Decision: Core will export the Interface. The SvelteKit Adapter logic will be implemented as a reference in tests/docs or a separate optional export to verify the pattern._
 

@@ -1,6 +1,6 @@
 {
   "name": "virtual-module-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Core module system with DI container, module registry, and TypeScript interfaces",
   "type": "module",
   "main": "./sveltekit/dist/index.js",

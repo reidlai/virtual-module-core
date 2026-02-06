@@ -102,7 +102,7 @@ static async loadModules(context: IContext, config: IAppConfig[]): Promise<void>
 The `Registry` class from `virtual-module-core` stores all registered modules:
 
 ```typescript
-import { IModuleBundle, IWidget, IHandler } from "../types";
+import { IModuleBundle, IWidget, IHandler, IRoute } from "../types";
 
 export class Registry {
   private static instance: Registry;
@@ -140,7 +140,7 @@ export interface IModuleBundle {
   widgets?: IWidget[]; // Dashboard tiles, UI components
   handlers?: IHandler[]; // Menu actions, commands
   services?: Record<string, any>;
-  routes?: IParamsRoute[]; // Internal navigation routes
+  routes?: IRoute[]; // Internal navigation routes
 }
 
 export interface IWidget {
@@ -249,7 +249,7 @@ import { goto } from '$app/navigation';
 </button>
 ```
 
-Routes defined in `IModuleBundle.routes` are matched by the Registry's `getRoute()` method and rendered via SvelteKit's catch-all route (`[...rest]/+page.svelte`).
+Routes defined in `IModuleBundle.routes` are matched by the Registry's `getRouter().match()` method and rendered via SvelteKit's catch-all route (`[...rest]/+page.svelte`).
 
 ---
 

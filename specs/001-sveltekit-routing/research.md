@@ -13,7 +13,7 @@ This research defines the architecture for a generic routing engine that support
 **Chosen**: `IFrameworkAdapter` Interface
 
 **Mechanism**:
-Core library defines the "Target Schema" (`IParamsRoute`). Adapters implement a `parse()` method that takes module metadata/files and outputs `IParamsRoute[]`.
+Core library defines the "Target Schema" (`IRoute`). Adapters implement a `parse()` method that takes module metadata/files and outputs `IRoute[]`.
 
 **Rationale**:
 

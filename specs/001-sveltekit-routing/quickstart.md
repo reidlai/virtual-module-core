@@ -31,7 +31,7 @@ The adapter automatically normalizes `[id]` to `:id` and registers the routes fo
 Implement `IFrameworkAdapter`:
 
 ```typescript
-import type { IFrameworkAdapter, IParamsRoute } from "virtual-module-core";
+import type { IFrameworkAdapter, IRoute } from "virtual-module-core";
 
 export class NextJsAdapter implements IFrameworkAdapter {
   detect(module: any): boolean {
@@ -39,8 +39,8 @@ export class NextJsAdapter implements IFrameworkAdapter {
     return !!module.nextjs_routes;
   }
 
-  async parse(module: any): Promise<IParamsRoute[]> {
-    const routes: IParamsRoute[] = [];
+  async parse(module: any): Promise<IRoute[]> {
+    const routes: IRoute[] = [];
 
     // 1. Scan module files
     // 2. Convert conventions
@@ -62,7 +62,7 @@ export class NextJsAdapter implements IFrameworkAdapter {
 
 ## Core Routing Rules (For Adapter Authors)
 
-When producing `IParamsRoute` objects, ensure:
+When producing `IRoute` objects, ensure:
 
 1. **Paths are Normalized**:
    - Use `:param` for dynamic segments.

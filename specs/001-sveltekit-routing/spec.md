@@ -11,7 +11,7 @@ This library serves as the **framework-agnostic core** for the [Virtual Module A
 
 **Adapter Pattern**:
 
-- **Core Library** (`virtual-module-core`): Provides framework-agnostic routing primitives (`IParamsRoute`, `Router`, conflict detection)
+- **Core Library** (`virtual-module-core`): Provides framework-agnostic routing primitives (`IRoute`, `Router`, conflict detection)
 - **Framework Adapters** (in App Shell): Translate framework-specific conventions (e.g., SvelteKit's `+page`, Next.js's `page.tsx`) into the core schema
 - **Separation of Concerns**: Core library has zero knowledge of framework syntax; adapters bridge the gap
 
@@ -46,7 +46,7 @@ As a module developer, I want to register routes using a simple, framework-agnos
 
 **Why this priority**: Foundation for all framework support; enables adapter pattern.
 
-**Independent Test**: Register routes with generic `IParamsRoute` schema; verify core router matches paths correctly.
+**Independent Test**: Register routes with generic `IRoute` schema; verify core router matches paths correctly.
 
 **Acceptance Scenarios**:
 
@@ -113,7 +113,7 @@ As a SvelteKit module developer, I want an adapter that translates SvelteKit con
 
 **Route Registration & Schema**:
 
-- **FR-001 [CORE]**: `IParamsRoute` MUST include fields: `path` (string), `component` (any), optional `type` (string), optional `metadata` (object).
+- **FR-001 [CORE]**: `IRoute` MUST include fields: `path` (string), `component` (any), optional `type` (string), optional `metadata` (object).
 - **FR-002 [CORE]**: The `Router` MUST support dynamic parameters in paths (e.g., `:id`, `:slug`).
 - **FR-003 [CORE]**: The `Router` MUST support wildcard/catch-all patterns (e.g., `*`, `/**`).
 
@@ -140,7 +140,7 @@ As a SvelteKit module developer, I want an adapter that translates SvelteKit con
 
 **Adapter Contract**:
 
-- **FR-011 [ADAPTER]**: The system MUST define an `IFrameworkAdapter` interface with methods: `parseModuleRoutes(module) → IParamsRoute[]`.
+- **FR-011 [ADAPTER]**: The system MUST define an `IFrameworkAdapter` interface with methods: `parseModuleRoutes(module) → IRoute[]`.
 - **FR-012 [ADAPTER]**: Adapters MUST normalize framework-specific syntax to core schema (e.g., SvelteKit `[param]` → `:param`).
 - **FR-013 [ADAPTER]**: Adapters MUST handle framework-specific metadata (e.g., SvelteKit `type: 'server'`, Next.js route handlers).
 - **FR-014 [ADAPTER]**: Adapters MUST validate directory conventions (e.g., error on `svelte/` for SvelteKit adapter).
@@ -154,9 +154,9 @@ As a SvelteKit module developer, I want an adapter that translates SvelteKit con
 
 ### Key Entities
 
-- **IParamsRoute** (core): `{ path: string, component: any, type?: string, metadata?: object }`
-- **RouteMatch** (core): `{ route: IParamsRoute, params: Record<string, string>, layouts?: IParamsRoute[] }`
-- **IFrameworkAdapter** (interface): `{ parseModuleRoutes(module): IParamsRoute[] }`
+- **IRoute** (core): `{ path: string, component: any, type?: string, metadata?: object }`
+- **RouteMatch** (core): `{ route: IRoute, params: Record<string, string>, layouts?: IRoute[] }`
+- **IFrameworkAdapter** (interface): `{ parseModuleRoutes(module): IRoute[] }`
 
 ## Success Criteria
 

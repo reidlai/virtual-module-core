@@ -17,7 +17,7 @@ export interface IModuleBundle {
   id: string;
 
   /** Normalized routes provided by the module */
-  routes?: IParamsRoute[];
+  routes?: IRoute[];
 
   /** UI Widgets (e.g., dashboard tiles) */
   widgets?: IWidget[];
@@ -33,12 +33,12 @@ export interface IModuleBundle {
 }
 ```
 
-### `IParamsRoute`
+### `IRoute`
 
 The canonical route schema used by the Core Registry.
 
 ```typescript
-export interface IParamsRoute {
+export interface IRoute {
   /**
    * The normalized URL pattern.
    * - Must start with `/`
@@ -143,9 +143,9 @@ Result of a router match operation.
 
 ```typescript
 export interface RouteMatch {
-  route: IParamsRoute;
+  route: IRoute;
   params: Record<string, string>;
-  layouts: IParamsRoute[];
+  layouts: IRoute[];
 }
 ```
 
@@ -201,7 +201,7 @@ export class Router {
    * Registers a list of routes.
    * Sorts them by specificity (static > dynamic > optional > wildcard).
    */
-  register(routes: IParamsRoute[]): void;
+  register(routes: IRoute[]): void;
 
   /**
    * Matches a path against registered routes.
@@ -225,7 +225,7 @@ export class SvelteKitAdapter implements IFrameworkAdapter {
 
   /**
    * Parses SvelteKit structure:
-   * - `sveltekit/routes/` -> IParamsRoute[]
+   * - `sveltekit/routes/` -> IRoute[]
    * - `sveltekit/widgets/` -> IWidget[]
    * - `sveltekit/handlers/` -> IHandler[]
    */
