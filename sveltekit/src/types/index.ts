@@ -39,9 +39,9 @@ export interface IContext {
 export interface IWidget {
   id: string;
   title: string;
-  component: any; // Svelte component
-  location?: string; // 'dashboard', 'sidebar', 'header'
-  size?: "small" | "medium" | "large";
+  component: any;
+  location: "dashboard" | "sidebar" | "main" | "header";
+  size: "small" | "medium" | "large";
 }
 
 /**
@@ -54,6 +54,15 @@ export interface IHandler {
 }
 
 /**
+ * Basic Route Definition
+ */
+export interface IRoute {
+  path: string;
+  type: "page" | "modal";
+  component: any;
+}
+
+/**
  * Represents a complete Virtual Module Bundle.
  */
 export interface IModuleBundle {
@@ -61,7 +70,7 @@ export interface IModuleBundle {
   widgets?: IWidget[];
   handlers?: IHandler[];
   services?: Record<string, any>;
-  routes?: IParamsRoute[];
+  routes?: IRoute[];
   metadata?: Record<string, any>;
 }
 
