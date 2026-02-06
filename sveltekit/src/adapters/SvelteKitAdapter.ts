@@ -1,7 +1,7 @@
 import type {
   IFrameworkAdapter,
   IModuleBundle,
-  IParamsRoute,
+  IRoute,
   RouteType,
   IWidget,
   IHandler,
@@ -25,7 +25,7 @@ export class SvelteKitAdapter implements IFrameworkAdapter {
   }
 
   async parse(module: any): Promise<IModuleBundle> {
-    const routes: IParamsRoute[] = [];
+    const routes: IRoute[] = [];
     const widgets: IWidget[] = [];
     const handlers: IHandler[] = [];
 
@@ -49,7 +49,7 @@ export class SvelteKitAdapter implements IFrameworkAdapter {
         handlers.push({
           id: name,
           title: name,
-          execute: async () => {}, // placeholder logic
+          execute: async () => { }, // placeholder logic
         });
         continue;
       }
@@ -79,7 +79,7 @@ export class SvelteKitAdapter implements IFrameworkAdapter {
     };
   }
 
-  private parseSvelteKitPath(filePath: string): IParamsRoute | null {
+  private parseSvelteKitPath(filePath: string): IRoute | null {
     // 1. Identify type
     let type: RouteType = "other";
     if (filePath.endsWith("+page.svelte")) type = "page";

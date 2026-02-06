@@ -1,10 +1,10 @@
-export type RouteType = "page" | "layout" | "error" | "api" | "other";
+export type RouteType = "page" | "layout" | "error" | "api" | "modal" | "other";
 
 /**
  * The canonical representation of a route in the Core system.
  * Framework-specific routes are normalized to this schema.
  */
-export interface IParamsRoute {
+export interface IRoute {
   path: string;
   type?: RouteType;
   component: any;
@@ -12,9 +12,9 @@ export interface IParamsRoute {
 }
 
 export interface RouteMatch {
-  route: IParamsRoute;
+  route: IRoute;
   params: Record<string, string>;
-  layouts: IParamsRoute[];
+  layouts: IRoute[];
 }
 
 /**
@@ -39,9 +39,9 @@ export interface IContext {
 export interface IWidget {
   id: string;
   title: string;
-  component: any; // Svelte component
-  location?: string; // 'dashboard', 'sidebar', 'header'
-  size?: "small" | "medium" | "large";
+  component: any;
+  location: "dashboard" | "sidebar" | "main" | "header";
+  size: "small" | "medium" | "large";
 }
 
 /**
@@ -61,7 +61,7 @@ export interface IModuleBundle {
   widgets?: IWidget[];
   handlers?: IHandler[];
   services?: Record<string, any>;
-  routes?: IParamsRoute[];
+  routes?: IRoute[];
   metadata?: Record<string, any>;
 }
 

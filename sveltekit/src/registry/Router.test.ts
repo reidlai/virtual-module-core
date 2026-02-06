@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Router } from "./Router";
-import type { IParamsRoute } from "../types";
+import type { IRoute } from "../types";
 
 describe("Router", () => {
   let router: Router;
@@ -11,7 +11,7 @@ describe("Router", () => {
 
   describe("register & sort", () => {
     it("should match static routes", () => {
-      const staticRoute: IParamsRoute = {
+      const staticRoute: IRoute = {
         path: "/blog",
         component: {},
         type: "page",
@@ -23,7 +23,7 @@ describe("Router", () => {
     });
 
     it("should sort specificity: static > dynamic > optional > wildcard", () => {
-      const routes: IParamsRoute[] = [
+      const routes: IRoute[] = [
         { path: "/*", component: "wildcard", type: "page" },
         { path: "/blog/:slug", component: "dynamic", type: "page" },
         { path: "/blog/featured", component: "static", type: "page" },
@@ -70,17 +70,17 @@ describe("Router", () => {
         path: "/",
         component: "root",
         type: "layout",
-      } as IParamsRoute;
+      } as IRoute;
       const blogLayout = {
         path: "/blog",
         component: "blog",
         type: "layout",
-      } as IParamsRoute;
+      } as IRoute;
       const postPage = {
         path: "/blog/:id",
         component: "page",
         type: "page",
-      } as IParamsRoute;
+      } as IRoute;
 
       router.register([rootLayout, blogLayout, postPage]);
 

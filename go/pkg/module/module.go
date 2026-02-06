@@ -1,3 +1,4 @@
+// Package module provides core interfaces and base structures for virtual modules.
 package module
 
 import (
