@@ -25,7 +25,7 @@ linters:
     - unconvert     # Remove unnecessary type conversions
     - unparam       # Find unused function parameters
     - prealloc      # Find slice declarations that could be preallocated
-    - exportloopref # Check for pointers to loop variables
+    - copyloopvar   # Check for pointers to loop variables (replacing deprecated exportloopref)
     - nolintlint    # Ensure nolint directives are properly used
 
 linters-settings:
