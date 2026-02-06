@@ -3,25 +3,25 @@
   "version": "0.1.1",
   "description": "Core module system with DI container, module registry, and TypeScript interfaces",
   "type": "module",
-  "main": "./sveltekit/dist/index.js",
-  "module": "./sveltekit/dist/index.js",
-  "types": "./sveltekit/dist/index.d.ts",
+  "main": "./sveltekit/src/index.ts",
+  "module": "./sveltekit/src/index.ts",
+  "types": "./sveltekit/src/index.ts",
   "exports": {
     ".": {
-      "types": "./sveltekit/dist/index.d.ts",
-      "import": "./sveltekit/dist/index.js"
+      "types": "./sveltekit/src/index.ts",
+      "import": "./sveltekit/src/index.ts"
     },
     "./di": {
-      "types": "./sveltekit/dist/di/index.d.ts",
-      "import": "./sveltekit/dist/di/index.js"
+      "types": "./sveltekit/src/di/index.ts",
+      "import": "./sveltekit/src/di/index.ts"
     },
     "./registry": {
-      "types": "./sveltekit/dist/registry/index.d.ts",
-      "import": "./sveltekit/dist/registry/index.js"
+      "types": "./sveltekit/src/registry/index.ts",
+      "import": "./sveltekit/src/registry/index.ts"
     },
     "./types": {
-      "types": "./sveltekit/dist/types/index.d.ts",
-      "import": "./sveltekit/dist/types/index.js"
+      "types": "./sveltekit/src/types/index.ts",
+      "import": "./sveltekit/src/types/index.ts"
     }
   },
   "scripts": {
