@@ -24,11 +24,6 @@
       "import": "./sveltekit/dist/types/index.js"
     }
   },
-  "files": [
-    "sveltekit/dist",
-    "sveltekit/package.json",
-    "README.md"
-  ],
   "scripts": {
     "build": "cd sveltekit && npm run build",
     "dev": "cd sveltekit && npm run dev",
