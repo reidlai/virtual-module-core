@@ -1,4 +1,4 @@
-import type { IParamsRoute, RouteMatch } from "../types";
+import type { IRoute, RouteMatch } from "../types";
 
 enum SegmentType {
   Static = 0,
@@ -8,7 +8,7 @@ enum SegmentType {
 }
 
 interface ParsedRoute {
-  original: IParamsRoute;
+  original: IRoute;
   segments: string[];
   types: SegmentType[];
   score: number;
@@ -17,7 +17,7 @@ interface ParsedRoute {
 export class Router {
   private routes: ParsedRoute[] = [];
 
-  register(routes: IParamsRoute[]) {
+  register(routes: IRoute[]) {
     for (const route of routes) {
       this.routes.push(this.parseRoute(route));
     }
@@ -43,7 +43,7 @@ export class Router {
     return null;
   }
 
-  private parseRoute(route: IParamsRoute): ParsedRoute {
+  private parseRoute(route: IRoute): ParsedRoute {
     const segments = route.path.split("/").filter(Boolean);
     const types: SegmentType[] = [];
     let score = 0;
@@ -138,10 +138,10 @@ export class Router {
     return params;
   }
 
-  private resolveLayouts(path: string): IParamsRoute[] {
+  private resolveLayouts(path: string): IRoute[] {
     // Find all Registered Layouts that match a prefix of the path
     // e.g. path /blog/post/1 -> matches layouts at /, /blog, /blog/post
-    const layouts: IParamsRoute[] = [];
+    const layouts: IRoute[] = [];
 
     // This requires 'this.routes' to contain layouts.
     // But matching usually filters for pages.

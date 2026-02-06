@@ -1,10 +1,10 @@
-export type RouteType = "page" | "layout" | "error" | "api" | "other";
+export type RouteType = "page" | "layout" | "error" | "api" | "modal" | "other";
 
 /**
  * The canonical representation of a route in the Core system.
  * Framework-specific routes are normalized to this schema.
  */
-export interface IParamsRoute {
+export interface IRoute {
   path: string;
   type?: RouteType;
   component: any;
@@ -12,9 +12,9 @@ export interface IParamsRoute {
 }
 
 export interface RouteMatch {
-  route: IParamsRoute;
+  route: IRoute;
   params: Record<string, string>;
-  layouts: IParamsRoute[];
+  layouts: IRoute[];
 }
 
 /**
@@ -51,15 +51,6 @@ export interface IHandler {
   id: string;
   title: string;
   execute: (context: IContext) => void | Promise<void>;
-}
-
-/**
- * Basic Route Definition
- */
-export interface IRoute {
-  path: string;
-  type: "page" | "modal";
-  component: any;
 }
 
 /**
