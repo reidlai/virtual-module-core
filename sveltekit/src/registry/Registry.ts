@@ -88,4 +88,8 @@ export class Registry {
   getHandlers(): IHandler[] {
     return this.handlers;
   }
+
+  getModule(id: string): IModuleBundle | undefined {
+    return this.modules.get(id);
+  }
 }

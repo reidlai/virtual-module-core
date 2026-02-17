@@ -7,6 +7,8 @@
 3.  Use `.agent/workflows/` as your `{WORKFLOW_DIR}`.
 
 ## Active Technologies
+- Go 1.24.11, Node.js v20, TypeScript 5.3+ (002-resclient-resgate-connection-imodulebundle)
+- N/A (Interface and communication layer change) (002-resclient-resgate-connection-imodulebundle)
 
 - Node.js v20 (LTS) (managed via toolchain) + Moonrepo, pnpm (001-initialize-current-project)
 - Svelte 5 (managed via toolchain) + Vite (001-initialize-current-project)
@@ -19,3 +21,6 @@
 - Flutter v3.22+ (managed via toolchain) (001-initialize-current-project)
 - Dart v2.22+ (managed via toolchain) (001-initialize-current-project)
 - Firebase v10+ (managed via toolchain) (001-initialize-current-project)
+
+## Recent Changes
+- 002-resclient-resgate-connection-imodulebundle: Added Go 1.24.11, Node.js v20, TypeScript 5.3+

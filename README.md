@@ -18,6 +18,7 @@ Modern web apps often need to share features across different frameworks (Svelte
 - **Dependency Injection**: Lightweight container for service management.
 - **Generic Routing**: Support for dynamic params (`:id`), wildcards (`*`), and optional params.
 - **Full Module Bundles**: First-class support for widgets and background handlers.
+- **Real-Time Synchronization**: Native support for RES protocol (Resgate) clients within module bundles.
 - **Conflict Detection**: Prevents multiple modules from reclaiming the same route path.
 - **SvelteKit Adapter**: Native support for SvelteKit file-based routing and structure.
 

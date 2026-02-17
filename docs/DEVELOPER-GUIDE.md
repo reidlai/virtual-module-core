@@ -473,6 +473,23 @@ export class SummaryRxService {
 
 Finally, update `SummaryState.svelte.ts` (Step 4) to subscribe to this service.
 
+### 🔄 Real-Time Synchronization (RES Protocol)
+
+For modules requiring real-time updates (e.g., portfolios, live charts), the `IModuleBundle` supports an optional `resClient`.
+
+1. **Accessing Client**: The `resClient` is provided by the AppShell and made available in the module's `IModuleBundle`.
+2. **Subscription**: Use `bundle.resClient.get(resourceId)` to fetch and `bundle.resClient.subscribe(resourceId, callback)` to listen for changes.
+3. **Graceful Fallback**: Always check if `resClient` is present. If `null`, fallback to standard REST polling or Zodios calls.
+
+```typescript
+// Example usage in a Svelte component
+if (bundle.resClient) {
+  bundle.resClient.subscribe('my.resource', (event, data) => {
+    if (event === 'change') updateLocalState(data);
+  });
+}
+```
+
 ---
 
 ## 🔧 Go Backend Layer
