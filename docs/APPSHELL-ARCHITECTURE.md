@@ -26,11 +26,11 @@ flowchart TD
         Core[virtual-module-core<br/>Types, Registry, DI]
     end
 
-    Core -->|imports| SV
+    SV -->|imports| Core
     SV -->|loads| WL
     SV -->|loads| PF
-    Core --> |imports| WL
-    Core --> |imports| PF
+    WL -->|imports| Core
+    PF -->|imports| Core
     TA -->|imports| WL
     TA -->|imports| PF
 ```
@@ -326,8 +326,8 @@ flowchart LR
     WL -->|is imported by| MCP
     PF -->|is imported by| MCP
 
-    MCP -->|responds to| LLM
-    API -->|serves| Client
+    MCP -->|responds to| LLM[LLM Agent]
+    API -->|serves| Client[Frontend]
 ```
 
 ### Goa Design Pattern
