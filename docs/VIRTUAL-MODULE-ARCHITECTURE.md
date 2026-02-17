@@ -112,6 +112,7 @@ Dependency Flow: sveltekit → ts ← go (one-way, no circular dependencies)
 
 - **Schemas and API client in `ts/src/lib/`**: Avoids circular dependencies (see [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md#data-contract-zod-schemas))
 - **RxJS Services in `ts/src/services/`**: Expose reactive Observables bridged to **Svelte Runes** via the State Adapter Pattern (see [APPSHELL-ARCHITECTURE.md](APPSHELL-ARCHITECTURE.md#rxjs--svelte-rune-integration))
+- **RES Client Synchronization**: Modules can ingest a pre-authenticated `resClient` from the `AppShell` to enable real-time state synchronization via Resgate.
 
 ## Integration Model
 
@@ -143,7 +144,7 @@ Virtual Modules are developed as **independent Git repositories** and integrated
 
 Modules are **NOT** standalone services. They provide artifacts that are statically or dynamically integrated:
 - **Backend**: Go services are instantiated and passed into the host server via Dependency Injection.
-- **Frontend**: The `ModuleLoader` discovers the module entry point (`index.ts`), and the module's `init()` function registers its widgets, handlers, and routes with the **`Registry`**.
+- **Frontend**: The `ModuleLoader` discovers the module entry point (`index.ts`), and the module's `init()` function registers its widgets, handlers, and routes with the **`Registry`**. During this phase, the AppShell can provide a shared `resClient` instance for real-time synchronization.
 
 ---
 

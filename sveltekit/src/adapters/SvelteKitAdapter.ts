@@ -73,6 +73,7 @@ export class SvelteKitAdapter implements IFrameworkAdapter {
       routes,
       widgets,
       handlers,
+      resClient: module.resClient || null,
       metadata: {
         framework: "sveltekit",
       },

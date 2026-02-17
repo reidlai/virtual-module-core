@@ -1,3 +1,4 @@
+import type ResClient from "resclient";
 export type RouteType = "page" | "layout" | "error" | "api" | "modal" | "other";
 
 /**
@@ -63,6 +64,10 @@ export interface IModuleBundle {
   services?: Record<string, any>;
   routes?: IRoute[];
   metadata?: Record<string, any>;
+  /**
+   * Optional RES client connection provided by the AppShell.
+   */
+  resClient?: ResClient;
 }
 
 export type ModuleInit = (context: IContext) => Promise<IModuleBundle>;

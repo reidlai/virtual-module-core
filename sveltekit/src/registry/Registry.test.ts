@@ -4,7 +4,7 @@ import type { IFrameworkAdapter, IModuleBundle } from "../types";
 
 // Mock Adapter returning Bundle
 class MockAdapter implements IFrameworkAdapter {
-  constructor(private bundle: IModuleBundle) {}
+  constructor(private bundle: IModuleBundle) { }
 
   detect(_module: any): boolean {
     return true;
@@ -47,9 +47,21 @@ describe("Registry", () => {
     const bundle = {
       id: "test-widgets",
       routes: [],
-      widgets: [{ id: "widget-a", title: "Widget A", component: {} }],
+      widgets: [
+        {
+          id: "widget-a",
+          title: "Widget A",
+          component: {},
+          location: "dashboard" as const,
+          size: "medium" as const,
+        },
+      ],
       handlers: [
-        { id: "handler-a", title: "Handler A", execute: async () => {} },
+        {
+          id: "handler-a",
+          title: "Handler A",
+          execute: async () => { },
+        },
       ],
     };
 
@@ -57,5 +69,22 @@ describe("Registry", () => {
 
     expect(registry.getWidgets().has("widget-a")).toBe(true);
     expect(registry.getHandlers()).toHaveLength(1);
+  });
+});
+
+describe("Registry resClient", () => {
+  it("should preserve resClient during registration", () => {
+    const registry = new Registry();
+    const mockResClient = { status: "connected" } as any;
+    const bundle = {
+      id: "res-mod",
+      resClient: mockResClient,
+    };
+
+    registry.register(bundle);
+
+    const registeredModule = registry.getModule("res-mod");
+    expect(registeredModule).toBeDefined();
+    expect(registeredModule?.resClient).toBe(mockResClient);
   });
 });

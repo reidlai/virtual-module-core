@@ -15,9 +15,9 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 [P] Install `resclient` library in `sveltekit/package.json`
-- [ ] T002 [P] Create `IResClient.d.ts` in `sveltekit/src/types/IResClient.d.ts` to provide base typings
-- [ ] T003 [P] Create BDD feature file `features/res_client.feature` based on acceptance scenarios
+- [x] T001 [P] Install `resclient` library in `sveltekit/package.json`
+- [ ] T002 [P] Remove redundant `IResClient.d.ts` in favor of `@types/resclient` or package types
+- [x] T003 [P] Create BDD feature file `features/res_client.feature` based on acceptance scenarios
 
 ---
 
@@ -25,9 +25,9 @@
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
-- [ ] T004 [P] Implement `IResClient` and `IOutboxEntry` interfaces in `sveltekit/src/types/index.ts`
-- [ ] T005 [P] Setup `resClient` provisioning placeholder in `sveltekit/src/appshell/`
-- [ ] T006 Update `Registry.ts` core storage to ensure it doesn't strip new properties from bundles
+- [ ] T004 [P] Cleanup `sveltekit/src/types/index.ts` (remove manual `IResClient`/`IOutboxEntry` definitions)
+- [ ] T005 [P] Update `sveltekit/src/appshell/AppShellResProvider.ts` to use `ResClient` from package
+- [x] T006 Update `Registry.ts` core storage to ensure it doesn't strip new properties from bundles
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -41,11 +41,11 @@
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Update `IModuleBundle` interface in `sveltekit/src/types/index.ts` to include optional `resClient`
-- [ ] T008 [US1] Explicitly handle `resClient` property in `Registry.ts` registration methods
-- [ ] T009 [US1] Update `SvelteKitAdapter.ts` to detect and extract `resClient` from raw exports
-- [ ] T010 [P] [US1] Add unit test for Registry preservation in `sveltekit/src/registry/Registry.test.ts`
-- [ ] T011 [P] [US1] Add unit test for SvelteKitAdapter parsing in `sveltekit/src/adapters/SvelteKitAdapter.test.ts`
+- [x] T007 [US1] Update `IModuleBundle` interface in `sveltekit/src/types/index.ts` to include optional `resClient`
+- [x] T008 [US1] Explicitly handle `resClient` property in `Registry.ts` registration methods
+- [x] T009 [US1] Update `SvelteKitAdapter.ts` to detect and extract `resClient` from raw exports
+- [x] T010 [P] [US1] Add unit test for Registry preservation in `sveltekit/src/registry/Registry.test.ts`
+- [x] T011 [P] [US1] Add unit test for SvelteKitAdapter parsing in `sveltekit/src/adapters/SvelteKitAdapter.test.ts`
 
 **Checkpoint**: User Story 1 functional - Modules can now provide real-time clients.
 
@@ -59,8 +59,8 @@
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] Create demo component using `resClient` in `sveltekit/src/examples/RealtimeDemo.svelte`
-- [ ] T013 [US2] Implement fallback logic in demo component to use REST if `resClient` is null
+- [x] T012 [US2] Create demo component using `resClient` in `sveltekit/src/examples/RealtimeDemo.svelte`
+- [x] T013 [US2] Implement fallback logic in demo component to use REST if `resClient` is null
 
 ---
 
@@ -68,10 +68,10 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T014 [P] Update `docs/VIRTUAL-MODULE-ARCHITECTURE.md` with ResClient lifecycle and sync patterns
-- [ ] T015 [P] Update `docs/DEVELOPER-GUIDE.md` with resgate integration instructions for modules
-- [ ] T016 [P] Update `README.md` with instructions on using `resClient` in virtual modules
-- [ ] T017 Run comprehensive build check via `npm run build` in `sveltekit/`
+- [x] T014 [P] Update `docs/VIRTUAL-MODULE-ARCHITECTURE.md` with ResClient lifecycle and sync patterns
+- [x] T015 [P] Update `docs/DEVELOPER-GUIDE.md` with resgate integration instructions for modules
+- [x] T016 [P] Update `README.md` with instructions on using `resClient` in virtual modules
+- [x] T017 Run comprehensive build check via `npm run build` in `sveltekit/`
 
 ---
 

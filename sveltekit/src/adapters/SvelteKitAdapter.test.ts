@@ -53,4 +53,21 @@ describe("SvelteKitAdapter", () => {
       expect(bundle.handlers![0].id).toBe("MyHandler.ts");
     });
   });
+
+  describe("resClient", () => {
+    it("should parse resClient from module", async () => {
+      const mockResClient = { status: "connected" } as any;
+      const bundle = await adapter.parse({
+        id: "test",
+        resClient: mockResClient,
+      });
+
+      expect(bundle.resClient).toBe(mockResClient);
+    });
+
+    it("should default resClient to null if missing", async () => {
+      const bundle = await adapter.parse({ id: "test" });
+      expect(bundle.resClient).toBeNull();
+    });
+  });
 });
