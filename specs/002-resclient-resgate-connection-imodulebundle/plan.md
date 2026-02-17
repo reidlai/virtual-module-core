@@ -9,7 +9,7 @@ Add an optional, pre-authenticated, and shared `resClient` property to the `IMod
 ## Technical Context
 
 **Language/Version**: Go 1.24.11, Node.js v20, TypeScript 5.3+  
-**Primary Dependencies**: SvelteKit v2, Svelte 5, RxJS v7, Zodios, ResClient (NEEDS CLARIFICATION), go-res, Goa v3  
+**Primary Dependencies**: SvelteKit v2, Svelte 5, Zodios, ResClient (NEEDS CLARIFICATION), go-res, Goa v3  
 **Storage**: N/A (Interface and communication layer change)  
 **Testing**: vitest (frontend), Go standard testing (backend), Cucumber (BDD)  
 **Target Platform**: Linux (Docker/Distroless)
@@ -34,7 +34,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
    - Identify the correct npm package for RES protocol client (e.g., `resclient`).
    - Determine how to import types for strict typing (FR-002).
 2. **Offline Outbox Pattern**:
-   - Research existing patterns in the codebase or best practices for staging changes via RxJS when the socket is down.
+   - Research existing patterns in the codebase or best practices for staging changes via Svelte runes when the socket is down.
    - Design a reusable pattern for modules to record "staged" updates and sync upon reconnection.
 3. **AppShell Integration**:
    - Research how the AppShell currently handles authentication tokens.
