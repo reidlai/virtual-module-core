@@ -50,7 +50,7 @@ As a widget developer, I want to access the `resClient` provided by the module b
 ### Edge Cases
 
 - **What happens when the `resClient` is not provided (is null)?**
-  - The `resClient` field should be optional in `IModuleBundle`. If null, the module MUST focus on its standard API connections to the backend (e.g., via Zodios/RxJS services) instead of using the RES protocol for real-time synchronization.
+  - The `resClient` field should be optional in `IModuleBundle`. If null, the module MUST focus on its standard API connections to the backend (e.g., via Zodios/Svelte services) instead of using the RES protocol for real-time synchronization.
 - **How does the system handle multiple modules with different `resgate` connections?**
   - Each `IModuleBundle` has its own `id`, so the `resClient` is scoped to that specific module bundle.
 - **What happens during a connection drop?**

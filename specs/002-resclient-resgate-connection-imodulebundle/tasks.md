@@ -25,7 +25,7 @@
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
-- [ ] T004 [P] Cleanup `sveltekit/src/types/index.ts` (remove manual `IResClient`/`IOutboxEntry` definitions)
+- [ ] T004 [P] Cleanup `sveltekit/src/types/index.ts` (Standardize RES client types)
 - [ ] T005 [P] Update `sveltekit/src/appshell/AppShellResProvider.ts` to use `ResClient` from package
 - [x] T006 Update `Registry.ts` core storage to ensure it doesn't strip new properties from bundles
 

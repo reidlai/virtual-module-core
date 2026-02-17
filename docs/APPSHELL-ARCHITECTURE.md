@@ -1,6 +1,6 @@
 # AppShell Architecture
 
-This document describes the **AppShell Architecture** which covers frontend (SvelteKit), state management (RxJS) and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
+This document describes the **AppShell Architecture** which covers frontend (SvelteKit), state management (Svelte 5 Runes) and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
 
 ## Overview
 
@@ -18,19 +18,19 @@ flowchart TD
     end
 
     subgraph Modules["modules/"]
-        WL[watchlist<br/>go/, ts/, svelte/]
-        PF[portfolio<br/>go/, ts/, svelte/]
+        WL[watchlist<br/>go/, svelte/]
+        PF[portfolio<br/>go/, svelte/]
     end
 
     subgraph External["External Packages"]
         Core[virtual-module-core<br/>Types, Registry, DI]
     end
 
-    SV -->|imports| Core
+    Core -->|imports| SV
     SV -->|loads| WL
     SV -->|loads| PF
-    WL --> |imports| Core
-    PF --> |imports| Core
+    Core --> |imports| WL
+    Core --> |imports| PF
     TA -->|imports| WL
     TA -->|imports| PF
 ```
@@ -141,6 +141,8 @@ export interface IModuleBundle {
   handlers?: IHandler[]; // Menu actions, commands
   services?: Record<string, any>;
   routes?: IRoute[]; // Internal navigation routes
+  metadata?: Record<string, any>;
+  resClient?: ResClient; // Optional RES protocol client
 }
 
 export interface IWidget {
@@ -319,13 +321,13 @@ flowchart LR
         PF[portfolio/go]
     end
 
-    API -->|imports| WL
-    API -->|imports| PF
-    MCP -->|imports| WL
-    MCP -->|imports| PF
+    WL -->|is imported by| API
+    PF -->|is imported by| API
+    WL -->|is imported by| MCP
+    PF -->|is imported by| MCP
 
-    LLM[LLM Agent] -->|MCP Protocol| MCP
-    Client[Frontend] -->|HTTP| API
+    MCP -->|responds to| LLM
+    API -->|serves| Client
 ```
 
 ### Goa Design Pattern
@@ -373,83 +375,64 @@ HandleHTTPServer(ctx, u, watchlistEndpoints, portfolioEndpoints, ...)
 
 ---
 
-## RxJS as a Decoupling Layer
+## State Management with Svelte 5 Runes
 
-RxJS services (in `modules/*/ts`) act as the **source of truth** and a decoupling layer between the backend API and the SvelteKit frontend.
+The architecture uses **Svelte 5 Runes** for high-performance UI reactivity and direct state management, moving away from RxJS to reduce complexity.
 
-### Benefits of the RxJS Layer
-
-1.  **Transport Independence**: UI components never interact with `fetch`, `axios`, or specific API clients. They only subscribe to Observables (`tickers$`, `error$`). This allows swapping HTTP for WebSockets or gRPC-web without changing a single Svelte component.
-2.  **State Persistence**: Since the RxJS service is a singleton (often held in the Registry), state persists across navigation. Moving from `/dashboard` to `/watchlist` doesn't require a re-fetch if the data is already in the `BehaviorSubject`.
-3.  **Data Normalization & Validation**:
-    *   **Zod Integration**: Services use Zod schemas to validate backend responses. If the API changes or breaks its contract, the error is caught and handled at the service layer, preventing UI crashes.
-    *   **Transformation**: The service can transform complex backend JSON into a "UI-ready" shape before emitting it to observers.
-4.  **Decoupled Development (Mocking)**:
-    *   Services implement a `usingMockData` toggle.
-    *   Frontend developers can build and test entire features using mock data emitted by the RxJS subjects, completely independent of the backend's status.
-
----
-
-## RxJS + Svelte Rune Integration
-
-The architecture uses **RxJS** for cross-framework business logic and **Svelte 5 Runes** for high-performance UI reactivity.
-
-### State Adapter Pattern
-Business logic services (in `modules/*/ts`) expose RxJS Observables. Svelte modules (in `modules/*/svelte`) use a **State Rune Class** to bridge these observables into Svelte's reactive system.
+### Core Reactive Logic ($state)
+Business logic and data services use `$state` and `$derived` directly to manage application state.
 
 ```typescript
-// modules/watchlist/svelte/src/lib/runes/WatchlistState.svelte.ts
-import { watchlistRxService } from "@modules/watchlist-ts";
-
-class WatchlistState {
+// sveltekit/src/lib/state/GlobalState.svelte.ts
+class GlobalState {
   // $state: Deeply reactive source of truth
-  tickers = $state<ITicker[]>([]);
+  data = $state<any>(null);
   loading = $state(false);
 
   // $derived: Auto-updating computed value
-  tickerCount = $derived(this.tickers.length);
+  isReady = $derived(this.data !== null);
 
-  constructor() {
-    // Bridge RxJS -> Svelte Rune
-    watchlistRxService.watchlist$.subscribe((data) => {
-      this.tickers = data.tickers;
-      this.loading = false;
-    });
-  }
-
-  public refresh() {
+  public async fetchData() {
     this.loading = true;
-    watchlistRxService.getWatchlist();
+    // Fetch and update $state
+    this.data = await api.getData();
+    this.loading = false;
   }
 }
 
-export const watchlistState = new WatchlistState();
+export const globalState = new GlobalState();
 ```
 
 ### Component Usage ($props)
-Components receive data either from the global State Rune or via `$props()` for dependency injection.
+Components receive data either from a global State class or via `$props()` for dependency injection.
 
 ```svelte
-<!-- modules/watchlist/svelte/src/lib/widgets/WatchlistWidget.svelte -->
+<!-- components/Widget.svelte -->
 <script lang="ts">
-  import { watchlistState } from "../runes/WatchlistState.svelte";
+  import { globalState } from "$lib/state/GlobalState.svelte";
   
   // $props: Modern Svelte 5 component communication
-  let { title = "My Watchlist" } = $props();
+  let { title = "Default Title" } = $props();
 
   // $derived: Reactive local view of the global state
-  let tickers = $derived(watchlistState.tickers);
+  let content = $derived(globalState.data);
 </script>
 
 <div class="card">
-  <h3>{title} ({watchlistState.tickerCount})</h3>
-  {#each tickers as ticker}
-    <p>{ticker.symbol}: {ticker.last}</p>
-  {/each}
+  <h3>{title}</h3>
+  {#if globalState.loading}
+    <p>Loading...</p>
+  {:else}
+    <p>{content}</p>
+  {/if}
 </div>
 ```
 
-### ModuleStateStore
+### Direct Integration with RES protocol
+
+Real-time updates from `resClient` are applied directly to `$state` variables within the state container or controller classes, ensuring low latency and reduced boilerplate.
+
+---
 
 For cross-module state, [moduleState.ts](file:///home/reidlai/GitLocal/ta-workspace/apps/sveltekit-appshell/src/lib/stores/moduleState.ts) provides channel-based communication:
 
@@ -489,23 +472,19 @@ This satisfies TypeScript at compile time; the consuming app provides the runtim
 
 ## Future Extensibility
 
-The virtual module architecture extends to other frontend frameworks using the same ReactiveX patterns.
+The virtual module architecture extends to other frontend frameworks using standard state management patterns.
 
 ### NextJS Integration
 
 NextJS can serve as an alternative frontend appshell, with or without Redux for state management.
 
-#### Option 1: NextJS with Direct RxJS (No Redux)
+#### Option 1: NextJS with Direct Logic Sharing (No Redux)
 
 **Module Structure:**
 
 ```
 modules/watchlist/
 ├── go/          # Backend service
-├── ts/          # Shared RxJS service
-|    └──src/
-|      └── services/
-|          └── WatchlistService.ts
 ├── svelte/      # SvelteKit UI
 └── nextjs/      # NextJS UI (future)
     └── src/
@@ -518,7 +497,7 @@ modules/watchlist/
 
 ```
 
-**1. Shared RxJS Service** (already exists in `modules/watchlist/ts/`):
+**1. Shared State Service**:
 
 ```typescript
 import { BehaviorSubject } from "rxjs";
@@ -533,8 +512,8 @@ export class WatchlistService {
   private static instance: WatchlistService;
   private userId = "demo-user";
 
-  // RxJS BehaviorSubject for state management
-  private _tickers$ = new BehaviorSubject<TickerItem[]>([]);
+  // Shared state container
+  private _tickers: TickerItem[] = $state([]);
 
   // Expose as observable for read-only access
   public readonly tickers$ = this._tickers$.asObservable();
@@ -609,13 +588,13 @@ export class WatchlistService {
 export const watchlistService = WatchlistService.getInstance();
 ```
 
-**NextJS Component** (direct RxJS subscription):
+**NextJS Component** (direct logic sharing):
 
-NextJS (React) can directly consume RxJS Observables because:
+NextJS (React) can directly share logic with SvelteKit because:
 
 1. **Shared Runtime**: Both run in JavaScript/TypeScript environments (browser or Node.js)
-2. **Observable Pattern**: RxJS `Observable.subscribe()` returns an unsubscribe function, which fits perfectly with React's `useEffect` cleanup pattern
-3. **No Framework Lock-in**: The `WatchlistService` from `modules/watchlist/ts/` is framework-agnostic—it's pure TypeScript with RxJS
+2. **Unified Logic**: Shared services can follow standard reactive patterns
+3. **No Framework Lock-in**: Services are framework-agnostic—they're pure TypeScript
 4. **Type Safety**: TypeScript types (`TickerItem[]`) are shared across all frameworks
 
 This means `modules/watchlist/nextjs/` can **import and use** the exact same service instance as `modules/watchlist/svelte/` without any adaptation layer.
@@ -649,13 +628,13 @@ export const MyTickersWidget = () => {
 
 For larger applications, Redux can centralize state management:
 
-**2. Redux Slice** (bridges RxJS to Redux):
+**2. Redux Slice** (bridges State to Redux):
 
 **Why Redux Integration Works:**
 
 1. **Shared Runtime**: Both run in JavaScript/TypeScript environments (browser or Node.js)
-2. **Observable Pattern**: RxJS `Observable.subscribe()` returns an unsubscribe function, which fits perfectly with React's `useEffect` cleanup pattern
-3. **No Framework Lock-in**: The `WatchlistService` from `modules/watchlist/ts/` is framework-agnostic—it's pure TypeScript with RxJS
+2. **Reactive Pattern**: Shared logic can follow standard reactive patterns
+3. **No Framework Lock-in**: Services are framework-agnostic—they're pure TypeScript.
 4. **Type Safety**: TypeScript types (`TickerItem[]`) are shared across all frameworks
 
 This means `modules/watchlist/nextjs/` can **import and use** the exact same service instance as `modules/watchlist/svelte/` without any adaptation layer.
@@ -678,7 +657,7 @@ const watchlistSlice = createSlice({
 export const { setTickers } = watchlistSlice.actions;
 export default watchlistSlice.reducer;
 
-// Bridge: Subscribe RxJS to Redux
+// Bridge: Subscribe State to Redux
 export const initWatchlistSync = (store: any) => {
   watchlistService.tickers$.subscribe((tickers) => {
     store.dispatch(setTickers(tickers));
@@ -736,7 +715,7 @@ import { Provider } from 'react-redux';
 import { store } from './store';
 import { initWatchlistSync } from '@watchlist/store';
 
-// Initialize RxJS → Redux bridge
+// Initialize Redux bridge
 initWatchlistSync(store);
 
 export default function RootLayout({ children }) {
@@ -757,7 +736,6 @@ export default function RootLayout({ children }) {
 ```
 modules/watchlist/
 ├── go/          # Backend service
-├── ts/          # Shared RxJS service (reference)
 ├── svelte/      # SvelteKit UI
 └── dart/        # Flutter UI (future)
     ├── lib/
@@ -770,7 +748,7 @@ modules/watchlist/
     └── pubspec.yaml
 ```
 
-**1. Dart Service** (mirrors TypeScript RxJS pattern):
+**1. Dart Service** (mirrors core pattern):
 
 ```dart
 // modules/watchlist/dart/lib/services/watchlist_service.dart
@@ -882,7 +860,7 @@ class MyApp extends StatelessWidget {
 **Flutter Benefits:**
 
 - **Cross-platform**: iOS, Android, Web, Desktop from single codebase
-- **Same RxDart patterns**: BehaviorSubject, Observable streams mirror RxJS
+- **Same reactive patterns**: BehaviorSubject and streams mirror the core pattern
 - **Module structure**: `modules/*/dart/` follows same pattern as `modules/*/ts/`
 - **Type safety**: Dart's strong typing similar to TypeScript
 
@@ -890,15 +868,16 @@ class MyApp extends StatelessWidget {
 
 ## Summary
 
-| Layer            | Frontend (SvelteKit)         | Backend (Go/Goa)         |
-| ---------------- | ---------------------------- | ------------------------ |
-| **Host**         | `apps/sveltekit-appshell`    | `apps/go-server`         |
-| **Discovery**    | `ModuleLoader` + glob        | Go imports in `cmd/*.go` |
-| **Registration** | `Registry.register(bundle)`  | `NewEndpoints(svc)`      |
-| **Widgets**      | `IWidget` → Svelte component | N/A                      |
-| **Handlers**     | `IHandler.execute()`         | N/A                      |
-| **Routes**       | `IParamsRoute`               | Goa HTTP DSL             |
-| **State**        | RxJS + Svelte stores         | In-memory / DB           |
+| Layer             | Frontend (SvelteKit)         | Backend (Go/Goa)         |
+| ----------------- | ---------------------------- | ------------------------ |
+| **Host**          | `apps/sveltekit-appshell`    | `apps/go-server`         |
+| **Discovery**     | `ModuleLoader` + glob        | Go imports in `cmd/*.go` |
+| **Registration**  | `Registry.register(bundle)`  | `NewEndpoints(svc)`      |
+| **Widgets**       | `IWidget` → Svelte component | N/A                      |
+| **Handlers**      | `IHandler.execute()`         | N/A                      |
+| **Routes**        | `IParamsRoute`               | Goa HTTP DSL             |
+| **State**         | Svelte 5 Runes ($state)      | In-memory / DB           |
+| **Service Layer** | Pure TypeScript              | Goa Powered Services     |
 
 ## Module Workflow Tooling
 
