@@ -3,6 +3,9 @@
   "version": "0.1.1",
   "description": "Core module system with DI container, module registry, and TypeScript interfaces",
   "type": "module",
+  "workspaces": [
+    "sveltekit"
+  ],
   "main": "./sveltekit/src/index.ts",
   "module": "./sveltekit/src/index.ts",
   "types": "./sveltekit/src/index.ts",
@@ -25,13 +28,13 @@
     }
   },
   "scripts": {
-    "build": "cd sveltekit && npm run build",
-    "dev": "cd sveltekit && npm run dev",
-    "clean": "cd sveltekit && npm run clean",
-    "prepare": "cd sveltekit && npm run build",
-    "test": "cd sveltekit && npm test",
-    "lint": "cd sveltekit && npm run lint",
-    "audit": "cd sveltekit && npm audit"
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present",
+    "prepare": "npm run build",
+    "test": "npm test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "audit": "npm audit --workspaces --if-present"
   },
   "keywords": [
     "dependency-injection",
