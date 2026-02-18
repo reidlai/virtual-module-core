@@ -71,7 +71,8 @@
 - [x] T014 [P] Update `docs/VIRTUAL-MODULE-ARCHITECTURE.md` with ResClient lifecycle and sync patterns
 - [x] T015 [P] Update `docs/DEVELOPER-GUIDE.md` with resgate integration instructions for modules
 - [x] T016 [P] Update `README.md` with instructions on using `resClient` in virtual modules
-- [x] T017 Run comprehensive build check via `npm run build` in `sveltekit/`
+- [ ] T018 Cleanup redundant Go stack dependencies and `RESRegistrar` interface logic
+- [ ] T019 [US1] Implement `ResOutboxState` using Svelte 5 runes for offline data staging
 
 ---
 

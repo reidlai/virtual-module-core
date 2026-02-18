@@ -5,7 +5,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/jirenius/go-res"
 	goahttp "goa.design/goa/v3/http"
 )
 
@@ -20,16 +19,9 @@ type HTTPRegistrar interface {
 	) []MountPoint
 }
 
-// RESRegistrar is an interface for modules that can register RES handlers
-type RESRegistrar interface {
-	RegisterRES(resSvc *res.Service)
-}
-
 // Registrar is the base interface that all modules must implement.
 // Modules can optionally implement:
 //   - HTTPRegistrar: For REST API endpoints (Goa-based, mounted on Chi)
-//   - RESRegistrar: For RES protocol handlers (Resgate real-time sync)
-//   - Both: Most common - REST for CRUD, RES for real-time updates
 //   - Neither: Utility modules that only provide shared functionality
 type Registrar interface {
 	Name() string

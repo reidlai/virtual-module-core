@@ -12,17 +12,17 @@
 
 ## Offline Outbox Pattern
 
-- **Concept**: Use an RxJS-based buffer to hold operations that fail due to connection loss.
-- **Pattern Component**: `ResOutboxService`
-  - **Storage**: `BehaviorSubject<OutboxEntry[]>`
+- **Concept**: Use Svelte 5 runes to manage a reactive list of operations that fail due to connection loss.
+- **Pattern Component**: `ResOutboxState`
+  - **State**: `$state<OutboxEntry[]>([])`
   - **Entry Structure**: `{ method: string, params: any, resourceId: string, timestamp: number }`
   - **Execution**:
-    - When `resClient` is offline, push to outbox.
+    - When `resClient` is offline, push to the outbox array.
     - When `resClient` emits a `connect` or `reconnect` event:
-      - Siphon the outbox.
+      - Siphon the outbox (iterate and execute).
       - Execute calls in order.
-      - Clear outbox upon success.
-- **Rationale**: Decouples module logic from connection state. Modules simply "emit" or "call" through a proxy that handles the staging.
+      - Clear the outbox state upon success.
+- **Rationale**: Decouples module logic from connection state using native Svelte 5 reactivity.
 
 ## AppShell Integration Pattern
 
