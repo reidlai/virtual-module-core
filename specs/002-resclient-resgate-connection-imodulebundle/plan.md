@@ -9,7 +9,7 @@ Add an optional, pre-authenticated, and shared `resClient` property to the `IMod
 ## Technical Context
 
 **Language/Version**: Go 1.24.11, Node.js v20, TypeScript 5.3+  
-**Primary Dependencies**: SvelteKit v2, Svelte 5, Zodios, ResClient (NEEDS CLARIFICATION), go-res, Goa v3  
+**Primary Dependencies**: SvelteKit v2, Svelte 5, Zodios, ResClient, Goa v3  
 **Storage**: N/A (Interface and communication layer change)  
 **Testing**: vitest (frontend), Go standard testing (backend), Cucumber (BDD)  
 **Target Platform**: Linux (Docker/Distroless)

@@ -23,9 +23,9 @@ The `resClient` MUST implement the following methods and properties:
 
 ### Properties
 
-| Property | Type                                                              | Description                   |
-| -------- | ----------------------------------------------------------------- | ----------------------------- |
-| `status` | `'connecting' \| 'connected' \| 'reconnecting' \| 'disconnected'` | The current connection state. |
+| Property    | Type      | Description                   |
+| ----------- | --------- | ----------------------------- |
+| `connected` | `boolean` | The current connection state. |
 
 ## 3. Events
 
