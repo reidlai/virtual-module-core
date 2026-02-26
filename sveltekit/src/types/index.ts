@@ -1,4 +1,3 @@
-import type ResClient from "resclient";
 export type RouteType = "page" | "layout" | "error" | "api" | "modal" | "other";
 
 /**
@@ -67,7 +66,7 @@ export interface IModuleBundle {
   /**
    * Optional RES client connection provided by the AppShell.
    */
-  resClient?: ResClient;
+  resClient?: any;
 }
 
 export type ModuleInit = (context: IContext) => Promise<IModuleBundle>;

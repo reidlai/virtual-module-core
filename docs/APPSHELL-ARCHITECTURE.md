@@ -142,7 +142,7 @@ export interface IModuleBundle {
   services?: Record<string, any>;
   routes?: IRoute[]; // Internal navigation routes
   metadata?: Record<string, any>;
-  resClient?: ResClient; // Optional RES protocol client
+  resClient?: any; // Optional RES protocol client
 }
 
 export interface IWidget {
