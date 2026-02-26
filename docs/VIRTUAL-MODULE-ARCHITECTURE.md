@@ -39,8 +39,8 @@ flowchart TD
         end
 
         %% Shared Logic
-        subgraph Shared ["Shared Logic (TypeScript)"]
-            Services["RxJS Services<br/>(Business Logic)"]
+        subgraph Shared ["State Management (SvelteKit)"]
+            States["Svelte 5 Runes<br/>(State Classes)"]
             Schemas["Zod Schemas<br/>(SSOT / Data Contract)"]
         end
 
@@ -61,9 +61,8 @@ flowchart TD
     Registry -- "Provides Deps" --> Services
 
     %% Internal Module Flow
-    Services -- "Validates vs" --> Schemas
-    Services -- "Streams Data" --> Runes
-    Runes -- "Reactive Updates" --> Widgets
+    States -- "Validates vs" --> Schemas
+    States -- "Reactive Updates" --> Widgets
     Schemas -- "Mapped to" --> GoaDSL
     GoaDSL -- "Generates" --> GoService
     GoaDSL -- "Generates" --> OpenAPI
@@ -86,32 +85,25 @@ flowchart TD
 │   ├── goa_gen/                     # Generated Goa code
 │   ├── pkg/                         # Service implementations (Business Logic)
 │   └── moon.yml                     # Go project tasks
-├── ts/                              # Shared Logic Layer (Transport & State)
-│   ├── src/
-│   │   ├── lib/                     # Core libraries (e.g. api-client.ts, schemas.ts)
-│   │   ├── services/                # ✅ RxJS services (Transport decoupling)
-│   │   ├── utils/                   # Shared utilities (e.g. logger)
-│   │   └── index.ts                 # ✅ SSOT: Exports all schemas + services
-│   ├── package.json
-│   └── moon.yml                     # TypeScript project tasks
 ├── sveltekit/                       # UI Layer (SvelteKit)
 │   ├── src/
 │   │   ├── lib/
+│   │   │   ├── api-client/          # Generated Zodios API client
 │   │   │   ├── components/ui/       # ShadCN Svelte components
 │   │   │   ├── widgets/             # Reusable UI widgets (Registry-bound)
-│   │   │   └── runes/               # Svelte 5 runes (Adapter pattern for RxJS)
+│   │   │   └── states/              # Svelte 5 Runes state classes
 │   │   └── routes/                  # SvelteKit routes (Module-specific pages)
-│   ├── package.json                 # Depends on: "@modules/[module_name]-ts": "workspace:*"
+│   ├── package.json
 │   └── moon.yml                     # Svelte project tasks
 └── moon.yml                         # Module root aggregated tasks
 
-Dependency Flow: sveltekit → ts ← go (one-way, no circular dependencies)
+Dependency Flow: sveltekit ← go (one-way, no circular dependencies)
 ```
 
 **Key Principles**:
 
-- **Schemas and API client in `ts/src/lib/`**: Avoids circular dependencies (see [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md#data-contract-zod-schemas))
-- **RxJS Services in `ts/src/services/`**: Expose reactive Observables bridged to **Svelte Runes** via the State Adapter Pattern (see [APPSHELL-ARCHITECTURE.md](APPSHELL-ARCHITECTURE.md#rxjs--svelte-rune-integration))
+- **API client in `sveltekit/src/lib/api-client/`**: Generated Zodios client with Zod schemas
+- **State Classes in `sveltekit/src/lib/states/`**: Use Svelte 5 Runes (`$state`, `$derived`) for reactive state management
 - **RES Client Synchronization**: Modules can ingest a pre-authenticated `resClient` from the `AppShell` to enable real-time state synchronization via Resgate.
 
 ## Integration Model
@@ -130,8 +122,8 @@ Virtual Modules are developed as **independent Git repositories** and integrated
 
 2. **Configure Workspace**:
    To ensure the host AppShell and build system can see the new module, updates are required in three key configuration files:
-   - **`.moon/workspace.yml`**: Add the module's sub-projects to the `projects` map (e.g., `modules/[module_name]/go`, `modules/[module_name]/ts`, `modules/[module_name]/sveltekit`).
-   - **`pnpm-workspace.yaml`**: Add the module's root path (e.g., `modules/[module_name]/**`) to include its packages in the pnpm workspace.
+   - **`.moon/workspace.yml`**: Add the module's sub-projects to the `projects` map (e.g., `modules/[module_name]/go`, `modules/[module_name]/sveltekit`).
+   - **`pnpm-workspace.yaml`**: Add the module's sveltekit path (e.g., `modules/[module_name]/sveltekit`) to include its packages in the pnpm workspace.
    - **`go.work`**: Add the backend path (e.g., `./modules/[module_name]/go`) to the Go workspace for cross-module development.
 
 3. **Install & Sync**:
@@ -150,55 +142,62 @@ Modules are **NOT** standalone services. They provide artifacts that are statica
 
 ## Component Boundaries
 
-The architecture follows a strict **UI-First** design flow: `UI (Svelte)` → `API Contract (Schema)` → `Reactive State (RxJS)` → `Implementation (Go)`.
+The architecture follows a strict **UI-First** design flow: `UI (Svelte)` → `API Contract (Schema)` → `Reactive State (Svelte 5 Runes)` → `Implementation (Go)`.
 
 ### 1. Frontend Layer (SvelteKit)
 
 **Role**: Presentation and User Interaction.
 **Reactivity**: Uses **Svelte 5 Runes** for predictable, high-performance UI state.
 
-#### State Adapter Pattern
-Since business logic lives in the Shared Logic layer (RxJS), Svelte modules implement a **State Rune Class** to bridge backend streams into the UI.
+#### State Class Pattern
+Business logic and API integration lives in **State Classes** using Svelte 5 Runes (`$state`, `$derived`).
 
 ```typescript
-// modules/[module_name]/sveltekit/src/lib/runes/[Module]State.svelte.ts
-import { [module]RxService } from "@modules/[module]-ts";
+// modules/[module_name]/sveltekit/src/lib/states/[Module]State.svelte.ts
+import { api } from "$lib/api-client";
 
 export class [Module]State {
   // Svelte 5 Reactive State
   data = $state<any>(null);
   loading = $state(false);
+  error = $state<string | null>(null);
 
-  constructor() {
-    // Bridge RxJS Observable -> Svelte Rune
-    [module]RxService.data$.subscribe((val) => {
-      this.data = val;
+  // Derived state
+  isReady = $derived(this.data !== null);
+
+  async fetch() {
+    this.loading = true;
+    this.error = null;
+    try {
+      this.data = await api.get("/[module]");
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : "Unknown error";
+    } finally {
       this.loading = false;
-    });
+    }
   }
 }
 export const [module]State = new [Module]State();
 ```
 
 **Boundaries**:
-- No direct dependency on API clients; consumes data only through RxJS services.
+- State classes integrate directly with the API client (Zodios).
 - UI components use `$props()` to support Dependency Injection and testability.
 
-### 2. Shared Logic Layer (TypeScript)
+### 2. API Client & Schemas (SvelteKit)
 
-**Role**: Single Source of Truth (SSOT), Data Validation, and State Management.
-**Tooling**: Zod + RxJS.
+**Role**: Single Source of Truth (SSOT), Data Validation.
+**Tooling**: Zod + Zodios.
 
-This layer acts as a buffer between the raw backend API and the frontend UI, ensuring **Transport Independence**.
+The API client and schemas are colocated in the SvelteKit layer for simpler dependency management.
 
-**Pattern**: SSOT + RxJS Service
-- **`ts/src/lib/`**: Contains the Zod schemas and the generated API client.
-- **`ts/src/services/`**: Contains the RxJS services that encapsulate API calls and manage reactive state.
-- **`ts/src/index.ts`**: The SSOT entry point that exports all public interfaces and handles for the module.
+**Pattern**: SSOT + Zodios Client
+- **`sveltekit/src/lib/api-client/`**: Contains the generated Zodios client with Zod schemas.
+- **`sveltekit/src/lib/states/`**: Contains Svelte 5 Runes state classes that manage reactive state.
 
 **Boundaries**:
-- Strictly decoupled from Svelte; can be used by any TypeScript-based shell (e.g., NextJS).
-- Validates all incoming data via Zod before emitting it to observers.
+- Validates all incoming data via Zod automatically through Zodios.
+- State classes encapsulate API calls and reactive state management.
 
 ### 3. Backend Layer (Go)
 
@@ -292,9 +291,9 @@ This module follows a strictly phased **UI-First** design philosophy. Backend im
 - **Path**: `sveltekit/src/lib/widgets/[WidgetName].stories.ts`
 - **Goal**: Create various scenarios (Loading, Empty, Data, Error) with sample data. Validate the component's look and feel with stakeholders.
 
-#### Step 4: Define State Types (Runes & Stores)
-- **Path**: `sveltekit/src/lib/runes/[Module]State.svelte.ts`
-- **Goal**: Define the state classes that will eventually hold the data. Use `$state`, `$derived`, and `$props` (runes) to support SvelteKit's reactivity model.
+#### Step 4: Define State Classes (Svelte 5 Runes)
+- **Path**: `sveltekit/src/lib/states/[Module]State.svelte.ts`
+- **Goal**: Define the state classes that will hold the data. Use `$state`, `$derived` to support SvelteKit's reactivity model.
 
 #### Step 5: Create Goa Design DSL
 - **Path**: `go/design/design.go`
@@ -310,12 +309,12 @@ This module follows a strictly phased **UI-First** design philosophy. Backend im
 
 #### Step 8: Generate TypeScript API Client
 - **Tooling**: Goa + Zodios
-- **Path**: `ts/lib/api-client.ts`
+- **Path**: `sveltekit/src/lib/api-client/index.ts`
 - **Goal**: Use the Goa-generated OpenAPI spec to generate a TypeScript client that supports **Zod schemas** and the **Zodios** API client. This ensures the frontend uses the exact same data contract as the backend.
 
-#### Step 9: Integrate RxJS, Runes, and Client
-- **Path**: `ts/src/services/[Module]RxService.ts`
-- **Goal**: Bridge the three layers. The RxJS service calls the API client, validates the results via Zod, and performs any necessary **payload transformations** before the data is consumed by the **Svelte Runes** in the UI.
+#### Step 9: Integrate State Classes and Client
+- **Path**: `sveltekit/src/lib/states/[Module]State.svelte.ts`
+- **Goal**: Integrate the API client with state classes. The state class calls the API client, which validates results via Zod automatically, and performs any necessary **payload transformations** before exposing reactive state to UI components.
 
 ---
 
@@ -326,8 +325,8 @@ This module follows a strictly phased **UI-First** design philosophy. Backend im
 **Rule**: All external dependencies (Host APIs, DBs, Auth) MUST be mockable to support isolated development and testing.
 
 - **Go**: Services must depend on **Interfaces**, not concrete structs. Use the Goa-generated interfaces to ensure transport independence.
-- **RxJS**: Services must provide a `usingMockData` mode to emit simulated payloads without a live backend.
-- **Svelte**: Components must receive data through `$props()` or context-injected Runes to facilitate Storybook testing.
+- **State Classes**: State classes should support mock data mode for development without a live backend.
+- **Svelte**: Components must receive data through `$props()` or state classes to facilitate Storybook testing.
 
 ### 2. Dependency Injection
 
@@ -347,10 +346,7 @@ Test each layer in isolation within the module directory.
 # Test Go logic
 moon run [module_name]-go:test
 
-# Test Shared Logic (RxJS/Zod)
-moon run [module_name]-ts:test
-
-# Test UI Components
+# Test UI Components and State Classes
 moon run [module_name]-sveltekit:test
 ```
 

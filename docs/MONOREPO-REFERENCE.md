@@ -65,7 +65,7 @@ Main application server.
 
 ### Modules
 
-All virtual modules  follow a standard structure with three possible sub-projects: Frontend (`sveltekit`), Backend (`go`), and Shared Logic (`ts`).
+All virtual modules follow a standard structure with two sub-projects: Frontend (`sveltekit`) and Backend (`go`).
 
 #### Root Project: `<module>`
 Aggregates tasks across sub-projects.
@@ -82,11 +82,7 @@ Aggregates tasks across sub-projects.
 | `go-format`           | `goimports -w ./go`               | Format Go backend (if exists)             |
 | `go-run`              | `cd go && go run .`               | Run Go server locally (if exists)         |
 | `goa-gen`             | `goa gen ...`                     | Generate Goa code from design (if exists) |
-| `ts-build`            | `pnpm --dir ts build`             | Build Shared TS logic (if exists)         |
-| `ts-lint`             | `pnpm --dir ts lint`              | Lint Shared TS logic (if exists)          |
-| `ts-test`             | `pnpm --dir ts run test`          | Test Shared TS logic (if exists)          |
-| `ts-format`           | `pnpm --dir ts run format`        | Format Shared TS logic (if exists)        |
-| `zodios-gen`          | `pnpm --dir ts run zodios-gen`    | Generate Zodios API client (if exists)    |
+| `zodios-gen`          | `pnpm --dir sveltekit run zodios-gen` | Generate Zodios API client (if exists) |
 | `sveltekit-dev`       | `pnpm --dir svelte dev`           | Start Svelte dev server (if exists)       |
 | `sveltekit-build`     | `pnpm --dir svelte build`         | Build Svelte package (if exists)          |
 | `sveltekit-lint`      | `pnpm --dir svelte lint`          | Lint Svelte components (if exists)        |
@@ -107,17 +103,6 @@ Svelte 5 + Svelte Kit 2 + ShadCN Svelte + Vite + Storybook.
 | `test`      | `vitest run`         | Run component tests      |
 | `format`    | `prettier --write .` | Format code              |
 | `storybook` | `pnpm run story:dev` | Start Storybook          |
-
-#### Shared: `<module>-ts`
-TypeScript RxJS Logic.
-
-| Task         | Command                      | Description                |
-| ------------ | ---------------------------- | -------------------------- |
-| `build`      | `tsc` / `pnpm build`         | Transpile to JS            |
-| `lint`       | `pnpm run lint`              | Run ESLint                 |
-| `test`       | `vitest run`                 | Run unit tests             |
-| `format`     | `prettier --write .`         | Format code                |
-| `zodios-gen` | `npx openapi-zod-client ...` | Generate Zodios API client |
 
 #### Backend: `<module>-go`
 Goa v3 + Cobra + Viper.

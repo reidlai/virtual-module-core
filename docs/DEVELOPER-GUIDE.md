@@ -25,7 +25,7 @@ flowchart TD
     subgraph Backend ["Phase 3: Implementation"]
         Step7["7. Backend Logic<br/>(Go Implementation)"]
         Step8["8. Zodios Client<br/>(Generated ts-client)"]
-        Step9["9. Full Integration<br/>(RxJS + Runes + Client)"]
+        Step9["9. Full Integration<br/>(Svelte 5 Runes + Client)"]
     end
 
     Step1 --> Step2 --> Step3
@@ -58,11 +58,9 @@ go install github.com/securego/gosec/v2/cmd/gosec@latest
 go install goa.design/goa/v3/cmd/goa@latest
 ```
 
-### 2. TypeScript & Node Ecosystem (Shared & Frontend)
+### 2. TypeScript & Node Ecosystem (Frontend)
 - **Node.js 20+ (LTS)**: JavaScript runtime.
 - **`pnpm`**: The mandatory package manager for this monorepo.
-- **`tsc`**: TypeScript compiler for the `ts/` layer.
-- **`RxJS 7+`**: Reactive programming library for shared services.
 - **`eslint` & `prettier`**: Pluggable linting and formatting.
 
 ```bash
@@ -86,12 +84,11 @@ npm install -g pnpm
 ### 1. TypeScript (`tsconfig.json`)
 We use a hierarchical `tsconfig` pattern. Each layer inherits from a base configuration to ensure consistency:
 - **`tsconfig.base.json`**: Root-level shared compiler options.
-- **`ts/tsconfig.json`**: Specific rules for the shared RxJS library.
 - **`sveltekit/tsconfig.json`**: Rules tailored for SvelteKit and Vite.
 
 ### 2. Svelte Config (`svelte.config.js`)
 Configures the Svelte compiler and SvelteKit adapters. Crucial for:
-- **Aliases**: Mapping `@modules/[name]-ts` to local paths for cross-layer imports.
+- **Aliases**: Mapping module paths for imports.
 - **Preprocessors**: Enabling `vitePreprocess` for TypeScript and Tailwind support.
 
 ### 3. SvelteKit 2 & ShadCN Svelte Foundation
@@ -123,14 +120,11 @@ Create the following directory structure for your module (e.g., `modules/[module
 ├── go/                   # Backend Layer (Goa)
 │   ├── design/           # API Contract DSL
 │   └── pkg/              # Logic Implementation
-├── ts/                   # Shared Layer (RxJS/Zod)
-│   └── src/
-│       ├── lib/          # API Client & Schemas
-│       └── services/     # Reactive Services
 └── sveltekit/            # UI Layer (Svelte 5)
     └── src/lib/
+        ├── api-client/   # Generated Zodios Client
         ├── widgets/      # Components & Stories
-        └── runes/        # UI State Adapter
+        └── states/       # Svelte 5 Runes State Classes
 ```
 
 ### 2. Workspace Configuration
@@ -146,7 +140,6 @@ To integrate your module into the [ta-workspace](https://github.com/reidlai/ta-w
   projects:
     - 'modules/[module-name]'
     - 'modules/[module-name]/go'
-    - 'modules/[module-name]/ts'
     - 'modules/[module-name]/sveltekit'
   ```
 - **`go.work`**:
@@ -174,18 +167,6 @@ tasks:
   goa-gen:
     command: "goa gen github.com/reidlai/ta-workspace/modules/[module]/go/design"
     inputs: ["design/*.go"]
-```
-
-#### TypeScript Layer (`ts/moon.yml`)
-```yaml
-tasks:
-  build:
-    command: "tsc"
-    inputs: ["src/**/*", "tsconfig.json"]
-  lint:
-    command: "eslint src"
-  format:
-    command: "prettier --write src"
 ```
 
 #### SvelteKit Layer (`sveltekit/moon.yml`)
@@ -216,13 +197,13 @@ Define these at the module root to run tasks across all layers simultaneously:
 ```yaml
 tasks:
   build:
-    deps: ["go:build", "ts:build", "sveltekit:build"]
+    deps: ["go:build", "sveltekit:build"]
   test:
-    deps: ["go:test", "ts:test", "sveltekit:test", "sveltekit:check"]
+    deps: ["go:test", "sveltekit:test", "sveltekit:check"]
   lint:
-    deps: ["go:lint", "ts:lint", "sveltekit:lint"]
+    deps: ["go:lint", "sveltekit:lint"]
   format:
-    deps: ["go:format", "ts:format", "sveltekit:format"]
+    deps: ["go:format", "sveltekit:format"]
 ```
 
 ---
@@ -288,16 +269,15 @@ We use **PyTM** to map architectural components to security threats. The `tm.py`
 
 ### 1. The Build Lifecycle
 Running `moon build` at the root initiates a coordinated build process:
-1. **Transpilation**: `tsc` converts TypeScript services in `ts/` to pure JavaScript.
-2. **Bundling**: Vite (via SvelteKit) bundles the UI components, optimizing assets and performing tree-shaking.
-3. **Compilation**: `go build` compiles the Go backend into an executable binary.
-4. **Artifacts**: 
+1. **Bundling**: Vite (via SvelteKit) bundles the UI components, optimizing assets and performing tree-shaking.
+2. **Compilation**: `go build` compiles the Go backend into an executable binary.
+3. **Artifacts**:
    - UI artifacts are generated in `sveltekit/dist/`.
    - Node packages are published to local `node_modules` for sibling consumption.
    - Go binaries are typically located in `go/bin/`.
 
 ### 2. Operational Discipline
-- **State SSOT**: Always derive UI state from RxJS services to ensure consistency across the "adapter" boundary.
+- **State SSOT**: Always derive UI state from Svelte 5 Runes state classes to ensure consistency.
 - **Contract First**: Changes to the API MUST start in the Goa DSL before any implementation begins.
 - **Security Gates**: Code cannot reach `main` if CI pipeline or pre-commit hooks fail.
 
@@ -371,10 +351,10 @@ export const Default: Story = { args: { value: 125.50 } };
 export const Loading: Story = { args: { loading: true } };
 ```
 
-### Step 4: Define State Interface & Rune
-**Path**: `sveltekit/src/lib/runes/SummaryState.svelte.ts`
+### Step 4: Define State Interface & State Class
+**Path**: `sveltekit/src/lib/states/SummaryState.svelte.ts`
 
-Define the **State Interface** that maps your domain data to the UI. Then, create the **State Rune** (Adapter) that implements this interface using Svelte 5 `$state`.
+Define the **State Interface** that maps your domain data to the UI. Then, create the **State Class** that implements this interface using Svelte 5 Runes (`$state`, `$derived`).
 
 ```typescript
 /**
@@ -435,7 +415,7 @@ func (s *summarySvc) Get(ctx context.Context) (*summary.Summary, error) {
 ```
 
 ### Step 8: Generate TypeScript API Client
-**Path**: `ts/lib/api-client.ts`
+**Path**: `sveltekit/src/lib/api-client/index.ts`
 
 Use Goa-generated OpenAPI specs to create a **Zodios** client. This ensures the frontend and backend share the exact same Zod validation schemas.
 
@@ -454,24 +434,37 @@ export const api = new Zodios([
 ]);
 ```
 
-### Step 9: Full Integration (RxJS + Runes)
-**Path**: `ts/src/services/SummaryRxService.ts`
+### Step 9: Full Integration (Svelte 5 Runes)
+**Path**: `sveltekit/src/lib/states/SummaryState.svelte.ts`
 
-Bridge the API client with reactive streams. Perform any necessary **payload transformations** here to simplify the data for Svelte Runes.
+Integrate the API client directly into the State Class using Svelte 5 Runes. Perform any necessary **payload transformations** within the state class.
 
 ```typescript
-export class SummaryRxService {
-  private _data$ = new BehaviorSubject({ value: 0 });
-  public data$ = this._data$.asObservable();
+import { api } from "$lib/api-client";
+
+export class SummaryState {
+  data = $state<{ value: number } | null>(null);
+  loading = $state(false);
+  error = $state<string | null>(null);
+
+  isReady = $derived(this.data !== null);
 
   async fetch() {
-    const res = await api.get("/summary");
-    this._data$.next(res); // Validated by Zodios automatically
+    this.loading = true;
+    this.error = null;
+    try {
+      const res = await api.get("/summary");
+      this.data = res; // Validated by Zodios automatically
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : "Unknown error";
+    } finally {
+      this.loading = false;
+    }
   }
 }
-```
 
-Finally, update `SummaryState.svelte.ts` (Step 4) to subscribe to this service.
+export const summaryState = new SummaryState();
+```
 
 ### 🔄 Real-Time Synchronization (RES Protocol)
 
@@ -689,7 +682,7 @@ When one module needs to interact with another:
 
 - [ ] UI rendered in Storybook with mock scenarios.
 - [ ] Goa DSL matches Zod schemas (Step 5 vs Step 8).
-- [ ] RxJS services validate data via Zod.
+- [ ] State classes validate data via Zodios/Zod.
 - [ ] Local pre-commit hooks passed.
 - [ ] Moon-level tasks (`moon run :test`) passed.
 

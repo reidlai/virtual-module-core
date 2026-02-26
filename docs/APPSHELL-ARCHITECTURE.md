@@ -195,7 +195,6 @@ The Shell UI components (Sidebar, Dashboard, Router) are "registry-aware":
 ```typescript
 // modules/[module_name]/sveltekit/src/index.ts
 import WidgetComponent from "$lib/widgets/WidgetComponent.svelte";
-import { <module_name>Service } from "@modules/<module_name>-ts";
 
 // SvelteKit 2: Auto-discover routes (pages, layouts, errors)
 // This glob pattern captures all nested routes within src/routes
@@ -377,7 +376,7 @@ HandleHTTPServer(ctx, u, watchlistEndpoints, portfolioEndpoints, ...)
 
 ## State Management with Svelte 5 Runes
 
-The architecture uses **Svelte 5 Runes** for high-performance UI reactivity and direct state management, moving away from RxJS to reduce complexity.
+The architecture uses **Svelte 5 Runes** for high-performance UI reactivity and direct state management.
 
 ### Core Reactive Logic ($state)
 Business logic and data services use `$state` and `$derived` directly to manage application state.
@@ -497,121 +496,102 @@ modules/watchlist/
 
 ```
 
-**1. Shared State Service**:
+**1. Shared API Service** (framework-agnostic):
 
 ```typescript
-import { BehaviorSubject } from "rxjs";
-
+// modules/watchlist/nextjs/src/services/watchlistApi.ts
 export interface TickerItem {
   symbol: string;
   on_hand: boolean;
   created_at?: string;
 }
 
-export class WatchlistService {
-  private static instance: WatchlistService;
-  private userId = "demo-user";
-
-  // Shared state container
-  private _tickers: TickerItem[] = $state([]);
-
-  // Expose as observable for read-only access
-  public readonly tickers$ = this._tickers$.asObservable();
-
-  private constructor() {
-    this.fetchTickers();
-  }
-
-  public static getInstance(): WatchlistService {
-    if (!WatchlistService.instance) {
-      WatchlistService.instance = new WatchlistService();
+// Pure API layer - no state management
+export const watchlistApi = {
+  async fetchTickers(userId: string): Promise<TickerItem[]> {
+    const res = await fetch("/api/watchlist", {
+      headers: { "X-User-ID": userId },
+    });
+    if (res.ok) {
+      return res.json();
     }
-    return WatchlistService.instance;
-  }
+    throw new Error("Failed to fetch tickers");
+  },
 
-  /**
-   * Svelte-compatible subscribe method.
-   * Svelte auto-subscribes to any object with this signature.
-   */
-  public subscribe(run: (value: TickerItem[]) => void): () => void {
-    const subscription = this._tickers$.subscribe(run);
-    return () => subscription.unsubscribe();
-  }
+  async addTicker(userId: string, symbol: string, onHand: boolean): Promise<void> {
+    await fetch("/api/watchlist", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-ID": userId,
+      },
+      body: JSON.stringify({ symbol, on_hand: onHand, user_id: userId }),
+    });
+  },
 
-  public async fetchTickers(): Promise<void> {
-    try {
-      const res = await fetch("/api/watchlist", {
-        headers: { "X-User-ID": this.userId },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        this._tickers$.next(data);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  public async addTicker(symbol: string, onHand: boolean): Promise<void> {
-    try {
-      const res = await fetch("/api/watchlist", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-User-ID": this.userId,
-        },
-        body: JSON.stringify({ symbol, on_hand: onHand, user_id: this.userId }),
-      });
-      if (res.ok) {
-        await this.fetchTickers();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  public async removeTicker(symbol: string): Promise<void> {
-    try {
-      const res = await fetch(`/api/watchlist/${symbol}`, {
-        method: "DELETE",
-        headers: { "X-User-ID": this.userId },
-      });
-      if (res.ok) {
-        await this.fetchTickers();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }
-}
-
-export const watchlistService = WatchlistService.getInstance();
+  async removeTicker(userId: string, symbol: string): Promise<void> {
+    await fetch(`/api/watchlist/${symbol}`, {
+      method: "DELETE",
+      headers: { "X-User-ID": userId },
+    });
+  },
+};
 ```
 
-**NextJS Component** (direct logic sharing):
+**2. React Hook** (state management):
 
-NextJS (React) can directly share logic with SvelteKit because:
+```typescript
+// modules/watchlist/nextjs/src/hooks/useWatchlist.ts
+import { useState, useEffect, useCallback } from "react";
+import { watchlistApi, TickerItem } from "../services/watchlistApi";
 
-1. **Shared Runtime**: Both run in JavaScript/TypeScript environments (browser or Node.js)
-2. **Unified Logic**: Shared services can follow standard reactive patterns
-3. **No Framework Lock-in**: Services are framework-agnostic—they're pure TypeScript
-4. **Type Safety**: TypeScript types (`TickerItem[]`) are shared across all frameworks
+export function useWatchlist(userId: string) {
+  const [tickers, setTickers] = useState<TickerItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-This means `modules/watchlist/nextjs/` can **import and use** the exact same service instance as `modules/watchlist/svelte/` without any adaptation layer.
+  const fetchTickers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await watchlistApi.fetchTickers(userId);
+      setTickers(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    fetchTickers();
+  }, [fetchTickers]);
+
+  const addTicker = async (symbol: string, onHand: boolean) => {
+    await watchlistApi.addTicker(userId, symbol, onHand);
+    await fetchTickers();
+  };
+
+  const removeTicker = async (symbol: string) => {
+    await watchlistApi.removeTicker(userId, symbol);
+    await fetchTickers();
+  };
+
+  return { tickers, loading, error, addTicker, removeTicker, refetch: fetchTickers };
+}
+```
+
+**3. NextJS Component** (uses the hook):
 
 ```tsx
 // modules/watchlist/nextjs/components/MyTickersWidget.tsx
-import { useEffect, useState } from "react";
-import { watchlistService } from "@watchlist/services";
+import { useWatchlist } from "../hooks/useWatchlist";
 
 export const MyTickersWidget = () => {
-  const [tickers, setTickers] = useState<TickerItem[]>([]);
+  const { tickers, loading, error } = useWatchlist("demo-user");
 
-  useEffect(() => {
-    const subscription = watchlistService.tickers$.subscribe(setTickers);
-    watchlistService.fetchTickers();
-    return () => subscription.unsubscribe();
-  }, []);
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="card">
@@ -624,77 +604,103 @@ export const MyTickersWidget = () => {
 };
 ```
 
-#### Option 2: NextJS with Redux (Optional)
+**Key Pattern Benefits:**
 
-For larger applications, Redux can centralize state management:
-
-**2. Redux Slice** (bridges State to Redux):
-
-**Why Redux Integration Works:**
-
-1. **Shared Runtime**: Both run in JavaScript/TypeScript environments (browser or Node.js)
-2. **Reactive Pattern**: Shared logic can follow standard reactive patterns
-3. **No Framework Lock-in**: Services are framework-agnostic—they're pure TypeScript.
+1. **Shared Runtime**: Both SvelteKit and NextJS run in JavaScript/TypeScript environments
+2. **API Layer Sharing**: The API service can be shared across frameworks
+3. **No Framework Lock-in**: Services are framework-agnostic—they're pure TypeScript
 4. **Type Safety**: TypeScript types (`TickerItem[]`) are shared across all frameworks
 
-This means `modules/watchlist/nextjs/` can **import and use** the exact same service instance as `modules/watchlist/svelte/` without any adaptation layer.
+#### Option 2: NextJS with Redux (Optional)
+
+For larger applications, Redux Toolkit can centralize state management with async thunks:
+
+**1. Redux Slice with Async Thunks**:
 
 ```typescript
 // modules/watchlist/nextjs/store/watchlistSlice.ts
-import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { watchlistService } from "@watchlist/services";
+import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
+import { watchlistApi, TickerItem } from "../services/watchlistApi";
+
+export const fetchTickers = createAsyncThunk(
+  "watchlist/fetchTickers",
+  async (userId: string) => {
+    return await watchlistApi.fetchTickers(userId);
+  }
+);
+
+export const addTicker = createAsyncThunk(
+  "watchlist/addTicker",
+  async ({ userId, symbol, onHand }: { userId: string; symbol: string; onHand: boolean }) => {
+    await watchlistApi.addTicker(userId, symbol, onHand);
+    return await watchlistApi.fetchTickers(userId);
+  }
+);
 
 const watchlistSlice = createSlice({
   name: "watchlist",
-  initialState: { tickers: [] as TickerItem[] },
-  reducers: {
-    setTickers: (state, action: PayloadAction<TickerItem[]>) => {
-      state.tickers = action.payload;
-    },
+  initialState: {
+    tickers: [] as TickerItem[],
+    loading: false,
+    error: null as string | null,
+  },
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchTickers.pending, (state) => { state.loading = true; })
+      .addCase(fetchTickers.fulfilled, (state, action) => {
+        state.loading = false;
+        state.tickers = action.payload;
+      })
+      .addCase(fetchTickers.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message ?? "Failed to fetch";
+      })
+      .addCase(addTicker.fulfilled, (state, action) => {
+        state.tickers = action.payload;
+      });
   },
 });
 
-export const { setTickers } = watchlistSlice.actions;
 export default watchlistSlice.reducer;
-
-// Bridge: Subscribe State to Redux
-export const initWatchlistSync = (store: any) => {
-  watchlistService.tickers$.subscribe((tickers) => {
-    store.dispatch(setTickers(tickers));
-  });
-};
 ```
 
-**3. NextJS Hook** (consumes Redux state):
+**2. NextJS Hook** (consumes Redux state):
 
 ```typescript
-// modules/watchlist/nextjs/hooks/useWatchlist.ts
-import { useSelector } from "react-redux";
-import { watchlistService } from "@watchlist/services";
+// modules/watchlist/nextjs/hooks/useWatchlistRedux.ts
+import { useSelector, useDispatch } from "react-redux";
+import { useEffect } from "react";
+import { fetchTickers, addTicker } from "../store/watchlistSlice";
 
-export const useWatchlist = () => {
-  const tickers = useSelector((state: RootState) => state.watchlist.tickers);
+export const useWatchlistRedux = (userId: string) => {
+  const dispatch = useDispatch();
+  const { tickers, loading, error } = useSelector((state: RootState) => state.watchlist);
+
+  useEffect(() => {
+    dispatch(fetchTickers(userId));
+  }, [dispatch, userId]);
 
   return {
     tickers,
-    fetchTickers: () => watchlistService.fetchTickers(),
-    addTicker: (symbol: string) => watchlistService.addTicker(symbol, false),
+    loading,
+    error,
+    addTicker: (symbol: string) => dispatch(addTicker({ userId, symbol, onHand: false })),
   };
 };
 ```
 
-**4. NextJS Widget Component**:
+**3. NextJS Widget Component**:
 
 ```tsx
 // modules/watchlist/nextjs/components/MyTickersWidget.tsx
-import { useWatchlist } from "../hooks/useWatchlist";
+import { useWatchlistRedux } from "../hooks/useWatchlistRedux";
 
 export const MyTickersWidget = () => {
-  const { tickers, fetchTickers } = useWatchlist();
+  const { tickers, loading, error } = useWatchlistRedux("demo-user");
 
-  useEffect(() => {
-    fetchTickers();
-  }, []);
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="card">
@@ -860,8 +866,8 @@ class MyApp extends StatelessWidget {
 **Flutter Benefits:**
 
 - **Cross-platform**: iOS, Android, Web, Desktop from single codebase
-- **Same reactive patterns**: BehaviorSubject and streams mirror the core pattern
-- **Module structure**: `modules/*/dart/` follows same pattern as `modules/*/ts/`
+- **Reactive patterns**: RxDart streams provide similar reactive state management as Svelte Runes
+- **Module structure**: `modules/*/dart/` follows same pattern as `modules/*/sveltekit/`
 - **Type safety**: Dart's strong typing similar to TypeScript
 
 ---
