@@ -1,25 +1,24 @@
 # AppShell Architecture
 
-This document describes the **AppShell Architecture** which ReactiveX state management (Svelte 5 Runes) and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
+This document describes the **AppShell Architecture** which ReactiveX state management and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
 
 ## Overview
 
 The AppShell pattern provides a **host application** that loads and orchestrates virtual (feature) modules at runtime. This enables:
 
-- **Modularity**: Virtual modules are developed independently in `modules/` or as GitHub submodules
-- **Composition**: Apps in `apps/` compose modules as needed
+- **Modularity**: Virtual modules can be developed locally in `modules/` or via GitHub submodules. However, the **best practice** is to bundle virtual modules as external packages and import them into the web application.
 - **Shared Core**: Common types and utilities provided by `virtual-module-core` package
 
 ```mermaid
 flowchart TD
-    subgraph Apps["apps/"]
+    subgraph Apps["Web App"]
         SV[sveltekit-appshell<br/>SvelteKit Frontend]
         TA[go-server<br/>Go Backend]
     end
 
     subgraph Modules["modules/"]
-        WL[watchlist<br/>go/, svelte/]
-        PF[portfolio<br/>go/, svelte/]
+        WL[watchlist]
+        PF[portfolio]
     end
 
     subgraph External["External Packages"]

@@ -178,8 +178,6 @@ When using workflow commands:
 docs/
 src/                      # ReactiveX typescript source
 go/                       # Go backend
-  ├── go.mod
-  ├── go.sum
   ├── cmd/
   ├── pkg/
   ├── internal/
@@ -195,6 +193,8 @@ pre-commit-config.yaml     # Pre-commit hooks
 local-devsecops.sh         # Local DevSecOps validation
 README.md                  # Project overview
 LICENSE.md                 # Project license
+go.mod
+go.sum
 ```
 
 ## Important Notes
