@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(npx @moonrepo/cli run sv-appshell:test)"
-    ]
-  }
-}

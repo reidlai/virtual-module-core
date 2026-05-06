@@ -1,6 +1,6 @@
 # AppShell Architecture
 
-This document describes the **AppShell Architecture** which covers frontend (SvelteKit), state management (Svelte 5 Runes) and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
+This document describes the **AppShell Architecture** which ReactiveX state management (Svelte 5 Runes) and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
 
 ## Overview
 

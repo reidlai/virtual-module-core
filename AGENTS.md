@@ -1,17 +1,14 @@
 # AGENTS.md
 
-> **SYSTEM NOTICE**: This is the Single Source of Truth (SSOT) for all AI agents (Gemini, Claude, Open Code) working on the `vibetics-cloudedge` project.
+> **SYSTEM NOTICE**: This is the Single Source of Truth (SSOT) for all AI agents (Gemini, Claude, Open Code) working on the `virtual-module-core` project.
 
 ## 1. Identity & Configuration Resolution
 
 Before executing any task, identify your runtime environment and load the corresponding configuration:
 
-| Agent Identity  | Command Path          | Config Dir  | Instruction Source           |
-| :-------------- | :-------------------- | :---------- | :--------------------------- |
-| **Gemini CLI**  | `.gemini/commands/`   | `.gemini`   | `GEMINI.md` (Redirects here) |
-| **Claude Code** | `.claude/commands/`   | `.claude`   | `CLAUDE.md` (Redirects here) |
-| **Open Code**   | `.opencode/commands/` | `.opencode` | `AGENTS.md` (Native)         |
-| **Antigravity** | `.agent/workflows/`   | `.agent`    | `AGENTS.md` (Native)         |
+| Agent Identity  | Skills Path      | Config Dir  | Instruction Source           |
+| :-------------- | :--------------- | :---------- | :--------------------------- |
+| **Antigravity** | `.agent/skils/`  | `.agents/`    | `AGENTS.md` (Native)         |
 
 **Rule**: Whenever the documentation below refers to `{COMMAND_DIR}`, substitute it with the **Command Path** specific to your identity above.
 
@@ -19,7 +16,10 @@ Before executing any task, identify your runtime environment and load the corres
 
 ## 2. Overview
 
-This repository implements a **Spec-Driven Development (SDD)** workflow system. The workflow guides feature development through structured phases: specification → planning → task generation → implementation.
+This repository implements a **Spec-Driven Development (SDD)** workflow system. The workflow guides feature development through structured phases: constiution -> specification -> clarify -> checlist -> planning -> analyze -> task generation -> tasks to issues -> implementation.
+                      ^            |
+                      |            |
+                      --------------
 
 ## 3. Workflow Commands
 
@@ -27,38 +27,38 @@ All workflow commands are defined in `{COMMAND_DIR}` and execute via the `/comma
 
 ### Feature Development Lifecycle
 
-1. **`/speckit.constitution [principles]`** - Create or update project constitution (`.specify/memory/constitution.md`)
+1. **`/speckit-constitution [principles]`** - Create or update project constitution (`.specify/memory/constitution.md`)
    - Defines non-negotiable development principles
    - Templates are synchronized automatically
    - Uses semantic versioning (MAJOR.MINOR.PATCH)
 
-2. **`/speckit.specify <feature description>`** - Create feature specification
+2. **`/speckit-specify <feature description>`** - Create feature specification
    - Generates `specs/###-feature/spec.md` from template
    - Focus: WHAT and WHY (business requirements, user scenarios)
    - Avoid: HOW (no tech stack, APIs, implementation details)
 
-3. **`/speckit.clarify`** - Resolve specification ambiguities (run BEFORE `/speckit.plan`)
+3. **`/speckit-clarify`** - Resolve specification ambiguities (run BEFORE `/speckit.plan`)
    - Asks up to 5 targeted clarification questions
    - Updates spec.md with answers in `## Clarifications` section
    - Reduces rework during implementation
 
-4. **`/speckit.plan [context]`** - Generate implementation plan
+4. **`/speckit-plan [context]`** - Generate implementation plan
    - Requires completed spec.md
    - Creates: `research.md`, `data-model.md`, `contracts/`, `quickstart.md`, agent-specific guidance
    - Validates against constitution principles
    - Stops before task generation (use `/speckit.tasks` next)
-
-5. **`/speckit.tasks [context]`** - Generate actionable task breakdown
-   - Requires completed plan.md
-   - Creates dependency-ordered `tasks.md`
-   - Tasks marked `[P]` can run in parallel
-   - Sequential tasks must run in order
 
 6. **`/speckit.analyze`** - Cross-artifact consistency analysis (run AFTER `/speckit.tasks`)
    - Read-only validation across spec.md, plan.md, tasks.md
    - Detects: duplications, ambiguities, coverage gaps, constitution violations
    - Severity: CRITICAL, HIGH, MEDIUM, LOW
    - Provides remediation suggestions (does NOT auto-fix)
+
+5. **`/speckit.tasks [context]`** - Generate actionable task breakdown
+   - Requires completed plan.md
+   - Creates dependency-ordered `tasks.md`
+   - Tasks marked `[P]` can run in parallel
+   - Sequential tasks must run in order
 
 7. **`/speckit.implement`** - Execute implementation from tasks.md
    - Phase-by-phase execution: Setup → Tests → Core → Integration → Polish
@@ -160,9 +160,8 @@ When using workflow commands:
 
 ## Project Technical Stack
 
-**Monorepo**: Use moonrepo to manage multiple application under ./apps/ and multiple packages under ./packages/
-**Frontend**: Next.js or SvelteKit
-**Backend**: Golang or rust
+**Frontend State Management**: ReactiveX
+**Backend**: Golang 
 **CI**: GitHub Actions with multi-environment promotion flow
 **CD**: Cloud provider deployment tool
 **Security Tools**:
@@ -176,49 +175,22 @@ When using workflow commands:
 ## Required Directory Structure
 
 ```
-apps/
-├── app1/
-│   ├── src/
-│   └── package.json
-├── app2/
-│   ├── src/
-│   └── package.json
-└── app3/
-    ├── src/
-    └── package.json
 docs/
-packages/
-├── node/
-├── sveltekit/
-├── nextjs/
-├── go/
-│   ├── pkg1/
-│   │   ├── src/
-│   │   └── go.mod
-│   ├── pkg2/
-│   │   ├── src/
-│   │   └── go.mod
-│   └── pkg3/
-│       ├── src/
-│       └── go.mod
-└── rust/
-    ├── pkg4/
-    │   ├── src/
-    │   └── Cargo.toml
-    ├── pkg5/
-    │   ├── src/
-    │   └── Cargo.toml
-    └── pkg6/
-        ├── src/
-        └── Cargo.toml
+src/                      # ReactiveX typescript source
+go/                       # Go backend
+  ├── go.mod
+  ├── go.sum
+  ├── cmd/
+  ├── pkg/
+  ├── internal/
+  └── tests/.              # Go tests
 features/                  # Cucumber BDD scenarios (@smoke, @integration, @api)
-tests/
+tests/                     # Typescript test
 ├── unit/                  # Isolated unit tests (mocks only)
 ├── integration/           # Playwright integration tests
 └── contract/              # API contract tests
 .github/workflows/         # CI/CD pipelines (ci.yaml, cd-{env}.yaml)
 deploy/docker/             # Dockerfile, entrypoint.sh
-threat_modelling/reports/  # Security scan outputs
 pre-commit-config.yaml     # Pre-commit hooks
 local-devsecops.sh         # Local DevSecOps validation
 README.md                  # Project overview
@@ -234,3 +206,5 @@ LICENSE.md                 # Project license
 - Analysis (`/speckit.analyze`) is read-only and never modifies files
 - **Constitution compliance is mandatory**: All implementations must follow 12-Factor and SOLID principles
 - **Out of Scope**: All resources related to different project cloud infrastrucutre related settings are out of this project
+
+
