@@ -23,7 +23,7 @@ This file defines immutable, non-negotiable engineering guardrails for this repo
 ### 1. Branching, Protection, and Promotions
 
 - No direct pushes to protected env branches (main, dev, sit, uat, staging, prod). All changes flow through PRs from issue branches named `{issueNumber}-{issue_title_snake_case}`.
-- Git commits MUST be pushed only to issue-generated branch `###-XXXXX`, where ### is the sequential specification number managed by spec-kit without zero padding and XXXXX is the summarized specification title in snake_case with variable length not limited to 5 characters.
+- Git commits MUST be pushed only to issue-generated branch `###-XXXXX`, where ### is the sequential specification number managed by spec-kit **with zero padding to three digits** (e.g., 001, 042) and XXXXX is the summarized specification title in snake_case with variable length not limited to 5 characters.
 - Required flow:
   1. local work → push → issue branch
   2. PR issue → main (CI must pass)
@@ -101,11 +101,14 @@ AI coding agents MUST:
 ### 9. Directory & Files That Must Exist
 
 - `.github/workflows/ci.yaml` (see Enforcement)
-- `pre-commit-config.yaml`
-- `features/` (Cucumber specs)
-- `tests/` (Typescript tests)
+- `pre-commit-config.yaml` (Pre-commit framework configuration file)
+- `e2e-tests/` (Typescript tests)
 - `deploy/docker/` (Dockerfile, entrypoint.sh, etc.)
 - `go/` (golang backend)
+- `go/pkg/` (golang source subfolder in which all files are exposed to external)
+- `go/internal/` (golang source subfolder in which all files are only exposed to internal)
+- `go/cmd/` (golang source subfolder in which all source files of all entry point binaries are located)
+- `go/tests/` (golang test files for unit tests)
 
 ### 10. Engineering Principles
 
