@@ -1,155 +1,96 @@
 # AppShell Architecture
 
-This document describes the **AppShell Architecture** which ReactiveX state management and backend (Go/Goa) appshells, explaining how modules are dynamically injected at runtime.
+This document describes the **AppShell Architecture**: how ReactiveX state management and backend (Go/Rust) appshells enable virtual (feature) modules to be dynamically injected at runtime, **without any UI kit dependency in the module itself**.
 
 ## Overview
 
-The AppShell pattern provides a **host application** that loads and orchestrates virtual (feature) modules at runtime. This enables:
+The AppShell pattern provides a **host application** that loads and orchestrates virtual (feature) modules at runtime. Each virtual module ships:
 
-- **Modularity**: Virtual modules can be developed locally in `modules/` or via GitHub submodules. However, the **best practice** is to bundle virtual modules as external packages and import them into the web application.
-- **Shared Core**: Common types and utilities provided by `virtual-module-core` package
+- A **`frontend/`** package — pure TypeScript state management, Zod schemas, and API clients (no UI framework or UI kit dependency)
+- A **`backend/`** package — Go or Rust API implementation
+
+The consuming application (NextJS, SvelteKit, or Flutter) imports the module's `frontend/` package and provides its own UI layer on top.
 
 ```mermaid
 flowchart TD
-    subgraph Apps["Web App"]
-        SV[sveltekit-appshell<br/>SvelteKit Frontend]
-        TA[go-server<br/>Go Backend]
+    subgraph Apps["Consuming App (e.g. NextJS or SvelteKit)"]
+        UI[UI Components<br/>Framework-specific]
+        Shell[AppShell<br/>Registry + Router]
     end
 
-    subgraph Modules["modules/"]
-        WL[watchlist]
-        PF[portfolio]
+    subgraph VirtMod["Virtual Module"]
+        FE[frontend/<br/>State · Schemas · API Client]
+        BE[backend/<br/>Go / Rust API]
     end
 
-    subgraph External["External Packages"]
-        Core[virtual-module-core<br/>Types, Registry, DI]
+    subgraph Core["virtual-module-core"]
+        Types[Interfaces & Registry]
     end
 
-    SV -->|imports| Core
-    SV -->|loads| WL
-    SV -->|loads| PF
-    WL -->|imports| Core
-    PF -->|imports| Core
-    TA -->|imports| WL
-    TA -->|imports| PF
+    Shell -->|imports| Types
+    UI -->|imports state from| FE
+    Shell -->|registers| FE
+    FE -->|calls| BE
+    FE -->|imports| Types
 ```
+
 ---
 
 ## Core Architectural Principles
 
-The AppShell Architecture is built upon **SOLID principles** and **Dependency Injection (DI)** to ensure a decoupled, maintainable, and extensible system.
+The AppShell Architecture is built upon **SOLID principles** and **Dependency Injection (DI)**.
 
 ### SOLID Principles
 
 | Principle                 | Application in AppShell                                                                                                                                                             |
 | :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **S**ingle Responsibility | Each **Virtual Module** focuses on a specific business domain (e.g., Portfolio, Watchlist), while the **AppShell** focuses solely on orchestration and common infra.                |
-| **O**pen/Closed           | The **AppShell** is **open for extension** (it can load any number of new modules at runtime) but **closed for modification** (the core shell code doesn't change to add features). |
-| **L**iskov Substitution   | Every module must satisfy the `IModuleBundle` interface. The Shell handles any object that implements this interface without needing to know the concrete module type.              |
-| **I**nterface Segregation | Consumers only depend on specific, small interfaces like `IWidget`, `IHandler`, or `IStore`, preventing modules from being forced to implement unnecessary logic.                   |
-| **D**ependency Inversion  | High-level AppShell logic depends on **abstractions** (interfaces in `virtual-module-core`) rather than concrete implementations of feature modules.                                |
+| **S**ingle Responsibility | Each **Virtual Module** focuses on a specific business domain. The **AppShell** focuses solely on orchestration and common infra.                                                   |
+| **O**pen/Closed           | The **AppShell** is open for extension (load any number of new modules) but closed for modification (core shell code doesn't change to add features).                               |
+| **L**iskov Substitution   | Every module must satisfy the `IModuleBundle` interface. The Shell handles any conforming bundle without knowing the concrete module type.                                          |
+| **I**nterface Segregation | Consumers depend only on specific, small interfaces (`IWidgetDescriptor`, `IHandler`, `IStatePackage`) — modules are not forced to implement unnecessary logic.                    |
+| **D**ependency Inversion  | High-level AppShell logic depends on **abstractions** (interfaces in `virtual-module-core`), not on concrete frontend frameworks or UI kits.                                        |
 
 ### Dependency Injection (DI)
 
-Dependency Injection is the mechanism used to provide a module's dependencies at runtime, rather than hard-coding them.
-
 #### Frontend DI (Registry)
-In the SvelteKit frontend, the **`Registry`** acts as a lightweight DI container.
-- **Provider**: Modules "provide" their services, widgets, and handlers by registering them with the Registry during the `init` phase.
-- **Consumer**: Components or other services "inject" these dependencies by requesting them from the Registry (e.g., `registry.getService('PortfolioService')`).
-- **Benefit**: This allows us to swap a "real" service with a "mock" service in testing or development without changing the consuming component.
 
-#### Backend DI (Go/Goa)
-In the Go backend, DI is handled during the server startup:
-- **Service Wiring**: The `api-server.go` (or a dedicated DI package) instantiates the concrete service implementations and passes them into the Goa-generated endpoints.
-- **Decoupling**: The transport layer (HTTP/gRPC) is decoupled from the business logic, making it easy to test services in isolation using mock database clients or secondary services.
+The **`Registry`** acts as a lightweight DI container for state packages and widget descriptors.
 
----
+- **Provider**: Modules register their state instances and widget metadata during the `init` phase.
+- **Consumer**: App-shell UI components inject state by requesting it from the Registry.
+- **Benefit**: Swap real state for mock state in tests without touching consuming components.
 
-## Frontend AppShell (sveltekit-appshell)
+#### Backend DI (Go/Rust)
 
-The SvelteKit frontend uses a **Registry** singleton and **ModuleLoader** to dynamically discover and load modules.
+In the Go or Rust backend, DI is handled at server startup:
 
-### Module Discovery
-
-[ModuleLoader.ts](file:///c:/Users/reidl/GitLocal/ta-workspace/apps/sveltekit-appshell/src/lib/loader/ModuleLoader.ts) uses Vite's `import.meta.glob` to discover modules:
-
-```typescript
-// Glob pattern discovers all module entry points
-private static moduleGlob = import.meta.glob('../../../../../modules/*/*/src/index.ts');
-
-static async loadModules(context: IContext, config: IAppConfig[]): Promise<void> {
-    for (const moduleConfig of config) {
-        if (!moduleConfig.enabled) continue;
-        const matchedKey = Object.keys(this.moduleGlob).find(key =>
-            key.includes(`/${moduleConfig.src}/`) && key.includes('/src/index.ts')
-        );
-        if (matchedKey) {
-            const module = await this.moduleGlob[matchedKey]();
-            const initFn = module.init || (module.default && module.default.init);
-            if (typeof initFn === 'function') {
-                const bundle = await initFn(context);
-                registry.register(bundle);
-            }
-        }
-    }
-}
-```
-
-### Registry Singleton
-
-The `Registry` class from `virtual-module-core` stores all registered modules:
-
-```typescript
-import { IModuleBundle, IWidget, IHandler, IRoute } from "../types";
-
-export class Registry {
-  private static instance: Registry;
-  private modules = new Map<string, IModuleBundle>();
-  private widgetMap = new Map<string, IWidget>();
-  private handlers: IHandler[] = [];
-  private servicesMap = new Map<string, any>();
-
-  register(bundle: IModuleBundle): void {
-    this.modules.set(bundle.id, bundle);
-    // Auto-register widgets, handlers, services
-    if (bundle.widgets) {
-      for (const widget of bundle.widgets) {
-        this.widgetMap.set(widget.id, widget);
-      }
-    }
-    if (bundle.handlers) {
-      this.handlers.push(...bundle.handlers);
-    }
-  }
-}
-```
+- **Service Wiring**: The server entrypoint instantiates concrete service implementations and passes them into the generated endpoints.
+- **Decoupling**: The transport layer (HTTP/gRPC) is decoupled from business logic, enabling isolated unit tests via mock database clients.
 
 ---
 
-## Virtual Module Interfaces
+## Module Interfaces (`virtual-module-core`)
 
-All modules implement `IModuleBundle` from `virtual-module-core/types`:
+All virtual modules implement `IModuleBundle`. Critically, **no UI framework types appear in these interfaces** — widget metadata is a plain descriptor, not a framework component.
 
 ```typescript
 // virtual-module-core/src/types/index.ts
 
 export interface IModuleBundle {
   id: string;
-  widgets?: IWidget[]; // Dashboard tiles, UI components
-  handlers?: IHandler[]; // Menu actions, commands
-  services?: Record<string, any>;
-  routes?: IRoute[]; // Internal navigation routes
-  metadata?: Record<string, any>;
-  resClient?: any; // Optional RES protocol client
+  widgetDescriptors?: IWidgetDescriptor[]; // Metadata only — no framework component
+  handlers?: IHandler[];
+  state?: Record<string, unknown>;         // Exported state instances
+  routes?: IRouteDescriptor[];             // Route paths — no page components
+  metadata?: Record<string, unknown>;
 }
 
-export interface IWidget {
+export interface IWidgetDescriptor {
   id: string;
   title: string;
-  component: any; // Svelte component
-  location?: string; // 'dashboard', 'sidebar', 'header'
-  size?: "small" | "medium" | "large";
+  location?: string;   // 'dashboard' | 'sidebar' | 'header'
+  size?: 'small' | 'medium' | 'large';
+  // No `component` field — the consuming app maps this id to its own UI component
 }
 
 export interface IHandler {
@@ -158,188 +99,220 @@ export interface IHandler {
   execute: (context: IContext) => void | Promise<void>;
 }
 
+export interface IRouteDescriptor {
+  path: string;        // e.g. '/portfolio'
+  widgetId?: string;  // Hint: which widget renders this route
+}
+
 export type ModuleInit = (context: IContext) => Promise<IModuleBundle>;
 ```
 
----
-
-## Module Injection Lifecycle
-
-The AppShell orchestrates the lifecycle of a module from discovery to runtime integration.
-
-### 1. Discovery Phase (Vite)
-The `ModuleLoader` uses Vite's `import.meta.glob` to scan the `modules/` directory for entry points (`index.ts`). This is a static analysis phase where Vite creates a mapping of paths to dynamic import functions.
-
-### 2. Initialization Phase
-For each enabled module, the shell calls its `init(context)` function.
-- **`IContext`**: The shell passes a context object containing shared resources (logger, global config, adapter).
-- **Module Autonomy**: The module is responsible for its own internal discovery (e.g., using its own `import.meta.glob` to find its Svelte routes or widgets).
-
-### 3. Registration Phase
-The module returns an `IModuleBundle`, which the shell passes to the **`Registry`**.
-- The `Registry` stores the bundle and maps its components (widgets by ID, routes by path).
-- Services are added to the Registry's internal dependency container.
-
-### 4. Runtime Integration
-The Shell UI components (Sidebar, Dashboard, Router) are "registry-aware":
-- **Sidebar**: Queries the Registry for all registered `IHandler` items to build the navigation menu.
-- **Dashboard**: Iterates through `IWidget` items with `location: 'dashboard'` to render tiles.
-- **Router**: The catch-all route `[...rest]/+page.svelte` matches the current URL against the Registry's route map to render the correct module page.
-
----
-```
-
-### Example: Registering a Widget
+### Registry Singleton
 
 ```typescript
-// modules/[module_name]/sveltekit/src/index.ts
-import WidgetComponent from "$lib/widgets/WidgetComponent.svelte";
+export class Registry {
+  private static instance: Registry;
+  private modules = new Map<string, IModuleBundle>();
+  private widgetIndex = new Map<string, IWidgetDescriptor>();
+  private stateIndex = new Map<string, unknown>();
 
-// SvelteKit 2: Auto-discover routes (pages, layouts, errors)
-// This glob pattern captures all nested routes within src/routes
-const routeFiles = import.meta.glob("./routes/**/+{page,layout,error}.svelte", {
-  eager: true,
-});
+  register(bundle: IModuleBundle): void {
+    this.modules.set(bundle.id, bundle);
+    for (const wd of bundle.widgetDescriptors ?? []) {
+      this.widgetIndex.set(wd.id, wd);
+    }
+    for (const [key, val] of Object.entries(bundle.state ?? {})) {
+      this.stateIndex.set(key, val);
+    }
+  }
 
-export const init: ModuleInit = async (context) => {
-  // Helper to convert file paths to route objects.
-  // This preserves 100% compatibility with SvelteKit 2 routing:
-  // - Layouts (+layout.svelte): Automatically wrap detailed child pages.
-  // - Pages (+page.svelte): Render content for the specific route match.
-  // - Errors (+error.svelte): Catch errors within their directory scope.
-  //
-  // Routing Patterns Supported (Nested & Dynamic):
-  // - Basic: ./routes/about/+page.svelte -> /about
-  // - Nested: ./routes/settings/profile/+page.svelte -> /settings/profile
-  // - Dynamic: ./routes/blog/[slug]/+page.svelte -> /blog/[slug]
-  // - Sub-path Dynamic: ./routes/shop/[category]/[item]/+page.svelte -> /shop/[category]/[item]
-  // - Catch-all: ./routes/[...rest]/+page.svelte -> /[...rest]
-  const routes = import.meta.glob('./routes/**/+*.{svelte,ts}', { eager: true });
-  const bundle = await adapter.parse(routes);
-  bundle.id = "[module_name]";
-  bundle.services = {
-    <module_name>Service: <module_name>Service,
-  };
-  bundle.widgets = [
-    {
-      id: "widget-id",
-      title: "Widget Title",
-      component: WidgetComponent,
-      location: "dashboard",
-      size: "small",
-    },
-  ];
-  return bundle;
-};
+  getState<T>(key: string): T {
+    return this.stateIndex.get(key) as T;
+  }
 
-  
+  getWidgetDescriptors(location?: string): IWidgetDescriptor[] {
+    const all = [...this.widgetIndex.values()];
+    return location ? all.filter(w => w.location === location) : all;
+  }
+}
 ```
-
-### Widget Navigation
-
-Widgets can trigger navigation to module routes using SvelteKit's `goto`:
-
-```svelte
-<script>
-import { goto } from '$app/navigation';
-</script>
-
-<button onclick={() => goto('/portfolio')}>
-    View Portfolio
-</button>
-```
-
-Routes defined in `IModuleBundle.routes` are matched by the Registry's `getRouter().match()` method and rendered via SvelteKit's catch-all route (`[...rest]/+page.svelte`).
 
 ---
 
-## Backend AppShell (go-server)
+## Module Lifecycle
 
-The Go backend uses the **Goa framework** with service injection from virtual modules.
+### 1. Discovery Phase
 
-### Why Goa?
+The `ModuleLoader` discovers module entry points from the `modules/` directory or from installed packages.
 
-[Goa](https://goa.design) is a **design-first** API framework for Go that provides:
-
-| Feature                | Benefit                                                   |
-| ---------------------- | --------------------------------------------------------- |
-| **DSL-based Design**   | API contracts defined in Go code, not YAML/JSON           |
-| **Code Generation**    | Server stubs, clients, OpenAPI specs auto-generated       |
-| **Type Safety**        | Compile-time validation of request/response types         |
-| **Transport Agnostic** | Same design generates HTTP, gRPC, or WebSocket handlers   |
-| **Middleware Support** | Integrates with Chi router for flexible middleware chains |
-
-This aligns with the virtual module pattern—each module defines its API contract, and Goa generates the transport layer.
-
-### Extending to MCP Servers (goa-ai)
-
-[Goa-AI](https://goa.design/ai) extends Goa for building **Model Context Protocol (MCP)** servers, enabling AI agents to discover and invoke your services:
-
-```go
-// Future: apps/mcp-server/design/design.go
-import (
-    . "goa.design/goa/v3/dsl"
-    "goa.design/ai/dsl"
-)
-
-var _ = ai.Agent("ta-assistant", func() {
-    ai.Description("Technical Analysis Assistant Agent")
-
-    // Expose existing services as AI tools
-    ai.Tool("get-watchlist", func() {
-        ai.Description("Retrieve user's stock watchlist")
-        ai.ToolService(WatchlistService)  // Reference existing Goa service
-    })
-
-    ai.Tool("get-portfolio-insights", func() {
-        ai.Description("Get AI-generated portfolio insights")
-        ai.ToolService(PortfolioService)
-    })
-})
+```typescript
+// apps/[appshell]/src/lib/loader/ModuleLoader.ts
+static async loadModules(context: IContext, config: IAppConfig[]): Promise<void> {
+  for (const moduleConfig of config) {
+    if (!moduleConfig.enabled) continue;
+    const module = await import(moduleConfig.packageName);
+    const initFn = module.init;
+    if (typeof initFn === 'function') {
+      const bundle = await initFn(context);
+      registry.register(bundle);
+    }
+  }
+}
 ```
 
-**MCP Server Benefits:**
+### 2. Initialization Phase
 
-- **Tool Discovery**: LLMs automatically discover available tools
-- **Typed Contracts**: Same Goa type safety for AI interactions
-- **Streaming**: Built-in support for streaming responses to agents
-- **Temporal Durability**: Goa-AI integrates with Temporal for robust workflows
+Each module's `init(context)` function:
+- Creates or exports its state instances
+- Returns an `IModuleBundle` with metadata and state references
 
-**Architecture with MCP:**
+### 3. Registration Phase
 
-```mermaid
-flowchart LR
-    subgraph Apps["apps/"]
-        API[go-server<br/>REST API]
-        MCP[mcp-server<br/>AI Tools]
-    end
+The Registry stores the bundle, indexing widget descriptors and state instances.
 
-    subgraph Modules["modules/"]
-        WL[watchlist/go]
-        PF[portfolio/go]
-    end
+### 4. Runtime Integration
 
-    WL -->|is imported by| API
-    PF -->|is imported by| API
-    WL -->|is imported by| MCP
-    PF -->|is imported by| MCP
+The Shell UI maps widget descriptor IDs to **framework-specific components defined in the consuming app**:
 
-    MCP -->|responds to| LLM[LLM Agent]
-    API -->|serves| Client[Frontend]
+```typescript
+// apps/sveltekit-appshell/src/lib/widgetRegistry.ts
+// SvelteKit example — maps descriptor IDs to Svelte components
+import WatchlistWidget from '$lib/widgets/WatchlistWidget.svelte';
+import PortfolioWidget from '$lib/widgets/PortfolioWidget.svelte';
+
+export const widgetComponentMap: Record<string, ComponentType> = {
+  'watchlist-widget': WatchlistWidget,
+  'portfolio-widget': PortfolioWidget,
+};
 ```
 
-### Goa Design Pattern
+```tsx
+// apps/nextjs-appshell/src/lib/widgetRegistry.tsx
+// NextJS example — maps descriptor IDs to React components
+import { WatchlistWidget } from '@/components/WatchlistWidget';
+import { PortfolioWidget } from '@/components/PortfolioWidget';
 
-Each module defines its API in a `design/*.go` file:
+export const widgetComponentMap: Record<string, React.ComponentType> = {
+  'watchlist-widget': WatchlistWidget,
+  'portfolio-widget': PortfolioWidget,
+};
+```
+
+---
+
+## Module `init()` Entry Point
+
+```typescript
+// modules/[module_name]/frontend/src/index.ts
+import { watchlistState } from './states/WatchlistState';
+
+export const init: ModuleInit = async (_context) => {
+  return {
+    id: '[module_name]',
+    widgetDescriptors: [
+      {
+        id: 'watchlist-widget',
+        title: 'My Watchlist',
+        location: 'dashboard',
+        size: 'medium',
+      },
+    ],
+    state: {
+      watchlistState,         // State instance — no Svelte/React dependency
+    },
+    routes: [
+      { path: '/watchlist', widgetId: 'watchlist-widget' },
+    ],
+  };
+};
+```
+
+---
+
+## Integrating Module State into Consuming Apps
+
+The module's `frontend/` package exports pure TypeScript state — no UI kit. Each consuming framework accesses that state through its own reactivity model.
+
+### SvelteKit Integration
+
+```typescript
+// apps/sveltekit-appshell/src/routes/dashboard/+page.svelte
+<script lang="ts">
+  import { registry } from '$lib/registry';
+  import type { WatchlistState } from '@my-org/watchlist-virtmod/frontend';
+
+  // Retrieve state from registry (populated during init)
+  const watchlistState = registry.getState<WatchlistState>('watchlistState');
+
+  // SvelteKit reactivity is driven by $state inside WatchlistState — no extra wiring needed
+</script>
+
+<WatchlistWidget state={watchlistState} />
+```
+
+### NextJS Integration
+
+```tsx
+// apps/nextjs-appshell/src/app/dashboard/page.tsx
+'use client';
+import { useEffect, useState } from 'react';
+import { registry } from '@/lib/registry';
+import type { WatchlistState } from '@my-org/watchlist-virtmod/frontend';
+
+export default function DashboardPage() {
+  const state = registry.getState<WatchlistState>('watchlistState');
+
+  useEffect(() => {
+    state.fetch();
+  }, []);
+
+  // Wrap in a React adapter that subscribes to the state's observable/signal
+  return <WatchlistWidget state={state} />;
+}
+```
+
+### Flutter Integration
+
+```dart
+// apps/flutter-appshell/lib/dashboard_screen.dart
+// The Dart/Flutter counterpart imports state logic via the backend API client
+// The module's backend/ exposes gRPC or REST; Flutter consumes it directly
+import 'package:watchlist_module/watchlist_service.dart';
+
+class DashboardScreen extends StatelessWidget {
+  final _service = WatchlistService();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+      stream: _service.tickers$,
+      builder: (context, snapshot) => WatchlistWidget(tickers: snapshot.data ?? []),
+    );
+  }
+}
+```
+
+---
+
+## Backend AppShell (Go / Rust)
+
+### Go with Goa
+
+[Goa](https://goa.design) provides a **design-first** API framework:
+
+| Feature              | Benefit                                           |
+| -------------------- | ------------------------------------------------- |
+| DSL-based Design     | API contracts in Go code, not YAML/JSON           |
+| Code Generation      | Server stubs, clients, OpenAPI specs auto-generated |
+| Type Safety          | Compile-time validation of request/response types |
+| Transport Agnostic   | HTTP, gRPC, or WebSocket from one design          |
 
 ```go
-// modules/portfolio/go/design/portfolio.go
+// modules/portfolio/backend/design/portfolio.go
 var _ = Service("portfolio", func() {
-    Description("Provide AI insights")
-
     Method("list", func() {
         Payload(func() {
-            Attribute("user_id", String, "User ID")
+            Attribute("user_id", String)
             Required("user_id")
         })
         Result(ArrayOf(Insight))
@@ -351,556 +324,120 @@ var _ = Service("portfolio", func() {
 })
 ```
 
-### Service Injection
-
-[api-server.go](file:///home/reidlai/GitLocal/ta-workspace/apps/go-server/cmd/api-server.go) wires module services:
+### Extending to MCP Servers (goa-ai)
 
 ```go
-// Import module implementations
+// apps/mcp-server/design/design.go
+var _ = ai.Agent("ta-assistant", func() {
+    ai.Tool("get-watchlist", func() {
+        ai.Description("Retrieve user's stock watchlist")
+        ai.ToolService(WatchlistService)
+    })
+    ai.Tool("get-portfolio-insights", func() {
+        ai.Description("Get AI-generated portfolio insights")
+        ai.ToolService(PortfolioService)
+    })
+})
+```
+
+### Service Injection
+
+```go
+// apps/go-server/cmd/api-server.go
 import (
-    portfolio "github.com/reidlai/ta-workspace/modules/portfolio/go/pkg"
-    watchlist "github.com/reidlai/ta-workspace/modules/watchlist/go/pkg"
+    portfolio "github.com/reidlai/ta-workspace/modules/portfolio/backend/pkg"
+    watchlist "github.com/reidlai/ta-workspace/modules/watchlist/backend/pkg"
 )
 
-// Initialize services via DI container
 services := di.NewServices(logger)
-watchlistEndpoints := services.WatchlistEndpoints
-portfolioEndpoints := services.PortfolioEndpoints
-
-// Mount on HTTP server
-HandleHTTPServer(ctx, u, watchlistEndpoints, portfolioEndpoints, ...)
+HandleHTTPServer(ctx, u, services.WatchlistEndpoints, services.PortfolioEndpoints)
 ```
 
 ---
 
-## State Management with Svelte 5 Runes
+## State Management Patterns by Framework
 
-The architecture uses **Svelte 5 Runes** for high-performance UI reactivity and direct state management.
+### SvelteKit — Svelte 5 Runes
 
-### Core Reactive Logic ($state)
-Business logic and data services use `$state` and `$derived` directly to manage application state.
+The module's `frontend/` state classes use Svelte 5 Runes natively (since the package targets SvelteKit consumers):
 
 ```typescript
-// sveltekit/src/lib/state/GlobalState.svelte.ts
-class GlobalState {
-  // $state: Deeply reactive source of truth
-  data = $state<any>(null);
+// modules/[module_name]/frontend/src/states/[Module]State.svelte.ts
+export class [Module]State {
+  data = $state<Item[]>([]);
   loading = $state(false);
+  isReady = $derived(this.data.length > 0);
 
-  // $derived: Auto-updating computed value
-  isReady = $derived(this.data !== null);
-
-  public async fetchData() {
+  async fetch() {
     this.loading = true;
-    // Fetch and update $state
-    this.data = await api.getData();
+    this.data = await api.getItems();
     this.loading = false;
   }
 }
-
-export const globalState = new GlobalState();
+export const [module]State = new [Module]State();
 ```
 
-### Component Usage ($props)
-Components receive data either from a global State class or via `$props()` for dependency injection.
+### NextJS — React Hooks Adapter
 
-```svelte
-<!-- components/Widget.svelte -->
-<script lang="ts">
-  import { globalState } from "$lib/state/GlobalState.svelte";
-  
-  // $props: Modern Svelte 5 component communication
-  let { title = "Default Title" } = $props();
-
-  // $derived: Reactive local view of the global state
-  let content = $derived(globalState.data);
-</script>
-
-<div class="card">
-  <h3>{title}</h3>
-  {#if globalState.loading}
-    <p>Loading...</p>
-  {:else}
-    <p>{content}</p>
-  {/if}
-</div>
-```
-
-### Direct Integration with RES protocol
-
-Real-time updates from `resClient` are applied directly to `$state` variables within the state container or controller classes, ensuring low latency and reduced boilerplate.
-
----
-
-For cross-module state, [moduleState.ts](file:///home/reidlai/GitLocal/ta-workspace/apps/sveltekit-appshell/src/lib/stores/moduleState.ts) provides channel-based communication:
+Since the module's state is plain TypeScript, wrap it in a React hook in the consuming app:
 
 ```typescript
-class ModuleStateStore {
-  private channels: Map<string, Writable<any>> = new Map();
+// apps/nextjs-appshell/src/hooks/useWatchlist.ts
+import { watchlistState } from '@my-org/watchlist-virtmod/frontend';
+import { useSyncExternalStore } from 'react';
 
-  getChannel<T>(channelId: string, initialValue?: T): Writable<T> {
-    if (!this.channels.has(channelId)) {
-      this.channels.set(channelId, writable<T>(initialValue));
-    }
-    return this.channels.get(channelId);
-  }
-
-  updateState<T>(channelId: string, value: T, source: string) {
-    // Last-writer-wins with requestAnimationFrame batching
-  }
+export function useWatchlist() {
+  // Subscribe to the state's subscribe() method (module exposes standard observable)
+  const data = useSyncExternalStore(watchlistState.subscribe, () => watchlistState.data);
+  return { data, loading: watchlistState.loading, fetch: watchlistState.fetch };
 }
 ```
 
----
+### Flutter — Dart HTTP Client
 
-## Virtual Modules in Isolated Packages
-
-When developing Svelte components in isolated packages (e.g., `modules/portfolio/svelte`), SvelteKit virtual modules like `$app/navigation` won't resolve. Create type stubs:
-
-```typescript
-// modules/portfolio/svelte/src/app.d.ts
-declare module "$app/navigation" {
-  export function goto(url: string | URL, opts?: any): Promise<void>;
-}
-```
-
-This satisfies TypeScript at compile time; the consuming app provides the runtime implementation.
-
----
-
-## Future Extensibility
-
-The virtual module architecture extends to other frontend frameworks using standard state management patterns.
-
-### NextJS Integration
-
-NextJS can serve as an alternative frontend appshell, with or without Redux for state management.
-
-#### Option 1: NextJS with Direct Logic Sharing (No Redux)
-
-**Module Structure:**
-
-```
-modules/watchlist/
-├── go/          # Backend service
-├── svelte/      # SvelteKit UI
-└── nextjs/      # NextJS UI (future)
-    └── src/
-        ├── components/
-        │   └── MyTickersWidget.tsx
-        ├── hooks/
-        │   └── useWatchlist.ts
-        └── store/
-            └── watchlistSlice.ts
-
-```
-
-**1. Shared API Service** (framework-agnostic):
-
-```typescript
-// modules/watchlist/nextjs/src/services/watchlistApi.ts
-export interface TickerItem {
-  symbol: string;
-  on_hand: boolean;
-  created_at?: string;
-}
-
-// Pure API layer - no state management
-export const watchlistApi = {
-  async fetchTickers(userId: string): Promise<TickerItem[]> {
-    const res = await fetch("/api/watchlist", {
-      headers: { "X-User-ID": userId },
-    });
-    if (res.ok) {
-      return res.json();
-    }
-    throw new Error("Failed to fetch tickers");
-  },
-
-  async addTicker(userId: string, symbol: string, onHand: boolean): Promise<void> {
-    await fetch("/api/watchlist", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-User-ID": userId,
-      },
-      body: JSON.stringify({ symbol, on_hand: onHand, user_id: userId }),
-    });
-  },
-
-  async removeTicker(userId: string, symbol: string): Promise<void> {
-    await fetch(`/api/watchlist/${symbol}`, {
-      method: "DELETE",
-      headers: { "X-User-ID": userId },
-    });
-  },
-};
-```
-
-**2. React Hook** (state management):
-
-```typescript
-// modules/watchlist/nextjs/src/hooks/useWatchlist.ts
-import { useState, useEffect, useCallback } from "react";
-import { watchlistApi, TickerItem } from "../services/watchlistApi";
-
-export function useWatchlist(userId: string) {
-  const [tickers, setTickers] = useState<TickerItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTickers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await watchlistApi.fetchTickers(userId);
-      setTickers(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    fetchTickers();
-  }, [fetchTickers]);
-
-  const addTicker = async (symbol: string, onHand: boolean) => {
-    await watchlistApi.addTicker(userId, symbol, onHand);
-    await fetchTickers();
-  };
-
-  const removeTicker = async (symbol: string) => {
-    await watchlistApi.removeTicker(userId, symbol);
-    await fetchTickers();
-  };
-
-  return { tickers, loading, error, addTicker, removeTicker, refetch: fetchTickers };
-}
-```
-
-**3. NextJS Component** (uses the hook):
-
-```tsx
-// modules/watchlist/nextjs/components/MyTickersWidget.tsx
-import { useWatchlist } from "../hooks/useWatchlist";
-
-export const MyTickersWidget = () => {
-  const { tickers, loading, error } = useWatchlist("demo-user");
-
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
-
-  return (
-    <div className="card">
-      <h2>My Tickers</h2>
-      {tickers.map((t) => (
-        <div key={t.symbol}>{t.symbol}</div>
-      ))}
-    </div>
-  );
-};
-```
-
-**Key Pattern Benefits:**
-
-1. **Shared Runtime**: Both SvelteKit and NextJS run in JavaScript/TypeScript environments
-2. **API Layer Sharing**: The API service can be shared across frameworks
-3. **No Framework Lock-in**: Services are framework-agnostic—they're pure TypeScript
-4. **Type Safety**: TypeScript types (`TickerItem[]`) are shared across all frameworks
-
-#### Option 2: NextJS with Redux (Optional)
-
-For larger applications, Redux Toolkit can centralize state management with async thunks:
-
-**1. Redux Slice with Async Thunks**:
-
-```typescript
-// modules/watchlist/nextjs/store/watchlistSlice.ts
-import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import { watchlistApi, TickerItem } from "../services/watchlistApi";
-
-export const fetchTickers = createAsyncThunk(
-  "watchlist/fetchTickers",
-  async (userId: string) => {
-    return await watchlistApi.fetchTickers(userId);
-  }
-);
-
-export const addTicker = createAsyncThunk(
-  "watchlist/addTicker",
-  async ({ userId, symbol, onHand }: { userId: string; symbol: string; onHand: boolean }) => {
-    await watchlistApi.addTicker(userId, symbol, onHand);
-    return await watchlistApi.fetchTickers(userId);
-  }
-);
-
-const watchlistSlice = createSlice({
-  name: "watchlist",
-  initialState: {
-    tickers: [] as TickerItem[],
-    loading: false,
-    error: null as string | null,
-  },
-  reducers: {},
-  extraReducers: (builder) => {
-    builder
-      .addCase(fetchTickers.pending, (state) => { state.loading = true; })
-      .addCase(fetchTickers.fulfilled, (state, action) => {
-        state.loading = false;
-        state.tickers = action.payload;
-      })
-      .addCase(fetchTickers.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message ?? "Failed to fetch";
-      })
-      .addCase(addTicker.fulfilled, (state, action) => {
-        state.tickers = action.payload;
-      });
-  },
-});
-
-export default watchlistSlice.reducer;
-```
-
-**2. NextJS Hook** (consumes Redux state):
-
-```typescript
-// modules/watchlist/nextjs/hooks/useWatchlistRedux.ts
-import { useSelector, useDispatch } from "react-redux";
-import { useEffect } from "react";
-import { fetchTickers, addTicker } from "../store/watchlistSlice";
-
-export const useWatchlistRedux = (userId: string) => {
-  const dispatch = useDispatch();
-  const { tickers, loading, error } = useSelector((state: RootState) => state.watchlist);
-
-  useEffect(() => {
-    dispatch(fetchTickers(userId));
-  }, [dispatch, userId]);
-
-  return {
-    tickers,
-    loading,
-    error,
-    addTicker: (symbol: string) => dispatch(addTicker({ userId, symbol, onHand: false })),
-  };
-};
-```
-
-**3. NextJS Widget Component**:
-
-```tsx
-// modules/watchlist/nextjs/components/MyTickersWidget.tsx
-import { useWatchlistRedux } from "../hooks/useWatchlistRedux";
-
-export const MyTickersWidget = () => {
-  const { tickers, loading, error } = useWatchlistRedux("demo-user");
-
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
-
-  return (
-    <div className="card">
-      <h2>My Tickers</h2>
-      {tickers.map((t) => (
-        <div key={t.symbol}>{t.symbol}</div>
-      ))}
-    </div>
-  );
-};
-```
-
-**5. NextJS AppShell** (`apps/nextjs-appshell`):
-
-```typescript
-// apps/nextjs-appshell/app/layout.tsx
-import { Provider } from 'react-redux';
-import { store } from './store';
-import { initWatchlistSync } from '@watchlist/store';
-
-// Initialize Redux bridge
-initWatchlistSync(store);
-
-export default function RootLayout({ children }) {
-    return (
-        <Provider store={store}>
-            {children}
-        </Provider>
-    );
-}
-```
-
----
-
-### Flutter + RxDart Integration
-
-**Module Structure:**
-
-```
-modules/watchlist/
-├── go/          # Backend service
-├── svelte/      # SvelteKit UI
-└── dart/        # Flutter UI (future)
-    ├── lib/
-    │   ├── models/
-    │   │   └── ticker_item.dart
-    │   ├── services/
-    │   │   └── watchlist_service.dart
-    │   └── widgets/
-    │       └── my_tickers_widget.dart
-    └── pubspec.yaml
-```
-
-**1. Dart Service** (mirrors core pattern):
+For Flutter, the module's `backend/` exposes an OpenAPI spec. Generate a Dart client from it:
 
 ```dart
-// modules/watchlist/dart/lib/services/watchlist_service.dart
-import 'package:rxdart/rxdart.dart';
-import 'package:http/http.dart' as http;
-import '../models/ticker_item.dart';
+// Generated from module's OpenAPI spec
+// modules/watchlist/backend/goa_gen/http/openapi3.json → Dart client
+import 'package:watchlist_client/watchlist_client.dart';
 
 class WatchlistService {
-  static final WatchlistService _instance = WatchlistService._internal();
-  factory WatchlistService() => _instance;
-  WatchlistService._internal();
-
+  final _client = WatchlistClient(baseUrl: 'https://api.example.com');
   final _tickers$ = BehaviorSubject<List<TickerItem>>.seeded([]);
 
-  // Expose as stream (read-only)
   Stream<List<TickerItem>> get tickers$ => _tickers$.stream;
 
-  // Current value accessor
-  List<TickerItem> get currentTickers => _tickers$.value;
-
-  Future<void> fetchTickers() async {
-    final response = await http.get(Uri.parse('/api/watchlist'));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body) as List;
-      _tickers$.add(data.map((e) => TickerItem.fromJson(e)).toList());
-    }
-  }
-
-  Future<void> addTicker(String symbol, bool onHand) async {
-    await http.post(
-      Uri.parse('/api/watchlist'),
-      body: jsonEncode({'symbol': symbol, 'on_hand': onHand}),
-    );
-    await fetchTickers(); // Refresh
-  }
-
-  void dispose() => _tickers$.close();
-}
-```
-
-**2. Flutter Widget** (uses StreamBuilder):
-
-```dart
-// modules/watchlist/dart/lib/widgets/my_tickers_widget.dart
-import 'package:flutter/material.dart';
-import '../services/watchlist_service.dart';
-
-class MyTickersWidget extends StatelessWidget {
-  final _service = WatchlistService();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: StreamBuilder<List<TickerItem>>(
-        stream: _service.tickers$,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return CircularProgressIndicator();
-          }
-
-          return ListView.builder(
-            itemCount: snapshot.data!.length,
-            itemBuilder: (context, index) {
-              final ticker = snapshot.data![index];
-              return ListTile(
-                title: Text(ticker.symbol),
-                trailing: Icon(
-                  ticker.onHand ? Icons.check : Icons.remove,
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
+  Future<void> fetch() async {
+    final items = await _client.listTickers();
+    _tickers$.add(items);
   }
 }
 ```
-
-**3. Flutter AppShell** (`apps/flutter-appshell`):
-
-```dart
-// apps/flutter-appshell/lib/main.dart
-import 'package:flutter/material.dart';
-import 'package:watchlist/widgets/my_tickers_widget.dart';
-import 'package:portfolio/widgets/portfolio_summary_widget.dart';
-
-void main() => runApp(MyApp());
-
-class MyApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: Text('TA Assistant')),
-        body: GridView.count(
-          crossAxisCount: 2,
-          children: [
-            MyTickersWidget(),        // From watchlist module
-            PortfolioSummaryWidget(), // From portfolio module
-          ],
-        ),
-      ),
-    );
-  }
-}
-```
-
-**Flutter Benefits:**
-
-- **Cross-platform**: iOS, Android, Web, Desktop from single codebase
-- **Reactive patterns**: RxDart streams provide similar reactive state management as Svelte Runes
-- **Module structure**: `modules/*/dart/` follows same pattern as `modules/*/sveltekit/`
-- **Type safety**: Dart's strong typing similar to TypeScript
 
 ---
 
 ## Summary
 
-| Layer             | Frontend (SvelteKit)         | Backend (Go/Goa)         |
-| ----------------- | ---------------------------- | ------------------------ |
-| **Host**          | `apps/sveltekit-appshell`    | `apps/go-server`         |
-| **Discovery**     | `ModuleLoader` + glob        | Go imports in `cmd/*.go` |
-| **Registration**  | `Registry.register(bundle)`  | `NewEndpoints(svc)`      |
-| **Widgets**       | `IWidget` → Svelte component | N/A                      |
-| **Handlers**      | `IHandler.execute()`         | N/A                      |
-| **Routes**        | `IParamsRoute`               | Goa HTTP DSL             |
-| **State**         | Svelte 5 Runes ($state)      | In-memory / DB           |
-| **Service Layer** | Pure TypeScript              | Goa Powered Services     |
+| Layer               | Virtual Module Provides              | Consuming App Provides               |
+| ------------------- | ------------------------------------ | ------------------------------------ |
+| **State**           | State classes (TS, no UI kit)        | Reactivity wiring per framework      |
+| **API Client**      | Zodios / generated client            | —                                    |
+| **Schemas**         | Zod schemas (SSOT)                   | —                                    |
+| **Widget**          | Descriptor (id, title, location)     | Actual UI component                  |
+| **Routes**          | Path strings                         | Route handler / page component       |
+| **Backend**         | Go/Rust service + OpenAPI spec       | Server hosting + DI wiring           |
 
 ## Module Workflow Tooling
 
-To manage the lifecycle of modules within the monorepo, a CLI tool is provided in `scripts/module-workflow`.
+| Command                   | Description                                                          |
+| ------------------------- | -------------------------------------------------------------------- |
+| `moon run :add-module`    | Adds a new virtual module, updates registry and workspace configs.   |
+| `moon run :delete-module` | Removes a module, cleaning up git submodules and config references.  |
+| `moon run :rename-module` | Renames a module, refactoring internal imports and names.            |
 
-### Core Commands
-
-| Command                   | Description                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------ |
-| `moon run :add-module`    | Adds a new feature module (submodule), updates registry and workspace configs. |
-| `moon run :delete-module` | Removes a module, cleaning up git submodules and config references.            |
-| `moon run :rename-module` | Renames a module, moving the submodule and refactoring internal imports/names. |
-
-### Configuration Automation
-
-The tooling automatically manages:
-
-1.  **Registry**: `apps/sv-appshell/src/lib/module-registry.ts` (or equivalent)
-2.  **Node Workspace**: `pnpm-workspace.yaml`
-3.  **Go Workspace**: `go.work`
-4.  **Git Submodules**: `.gitmodules`, `.git/config`
+The tooling manages:
+1. **Registry**: `apps/[appshell]/src/lib/module-registry.ts`
+2. **Node Workspace**: `pnpm-workspace.yaml`
+3. **Go Workspace**: `go.work`
+4. **Git Submodules**: `.gitmodules`, `.git/config`
