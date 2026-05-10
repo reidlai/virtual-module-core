@@ -47,17 +47,17 @@ The AppShell Architecture is built upon **SOLID principles** and **Dependency In
 | **S**ingle Responsibility | Each **Virtual Module** focuses on a specific business domain. The **AppShell** focuses solely on orchestration and common infra.                                                   |
 | **O**pen/Closed           | The **AppShell** is open for extension (load any number of new modules) but closed for modification (core shell code doesn't change to add features).                               |
 | **L**iskov Substitution   | Every module must satisfy the `IModuleBundle` interface. The Shell handles any conforming bundle without knowing the concrete module type.                                          |
-| **I**nterface Segregation | Consumers depend only on specific, small interfaces (`IWidgetDescriptor`, `IHandler`, `IStatePackage`) — modules are not forced to implement unnecessary logic.                    |
+| **I**nterface Segregation | Consumers depend only on specific, small interfaces (`IHandler`, `IStatePackage`) — modules are not forced to implement unnecessary logic.                                          |
 | **D**ependency Inversion  | High-level AppShell logic depends on **abstractions** (interfaces in `virtual-module-core`), not on concrete frontend frameworks or UI kits.                                        |
 
 ### Dependency Injection (DI)
 
 #### Frontend DI (Registry)
 
-The **`Registry`** acts as a lightweight DI container for state packages and widget descriptors.
+The **`Registry`** acts as a lightweight DI container for module state and handlers.
 
-- **Provider**: Modules register their state instances and widget metadata during the `init` phase.
-- **Consumer**: App-shell UI components inject state by requesting it from the Registry.
+- **Provider**: Modules register their state instances and handlers during the `init` phase.
+- **Consumer**: App-shell and UI components inject state by requesting it from the Registry.
 - **Benefit**: Swap real state for mock state in tests without touching consuming components.
 
 #### Backend DI (Go/Rust)
@@ -71,26 +71,17 @@ In the Go or Rust backend, DI is handled at server startup:
 
 ## Module Interfaces (`virtual-module-core`)
 
-All virtual modules implement `IModuleBundle`. Critically, **no UI framework types appear in these interfaces** — widget metadata is a plain descriptor, not a framework component.
+All virtual modules implement `IModuleBundle`. There are **no UI types in these interfaces** — widget layout, component mapping, and rendering are entirely the consuming app's responsibility.
 
 ```typescript
 // virtual-module-core/src/types/index.ts
 
 export interface IModuleBundle {
   id: string;
-  widgetDescriptors?: IWidgetDescriptor[]; // Metadata only — no framework component
   handlers?: IHandler[];
-  state?: Record<string, unknown>;         // Exported state instances
-  routes?: IRouteDescriptor[];             // Route paths — no page components
+  state?: Record<string, unknown>;  // Exported state instances
+  routes?: IRouteDescriptor[];      // Route paths only — no page components
   metadata?: Record<string, unknown>;
-}
-
-export interface IWidgetDescriptor {
-  id: string;
-  title: string;
-  location?: string;   // 'dashboard' | 'sidebar' | 'header'
-  size?: 'small' | 'medium' | 'large';
-  // No `component` field — the consuming app maps this id to its own UI component
 }
 
 export interface IHandler {
@@ -100,8 +91,7 @@ export interface IHandler {
 }
 
 export interface IRouteDescriptor {
-  path: string;        // e.g. '/portfolio'
-  widgetId?: string;  // Hint: which widget renders this route
+  path: string;  // e.g. '/portfolio'
 }
 
 export type ModuleInit = (context: IContext) => Promise<IModuleBundle>;
@@ -113,16 +103,16 @@ export type ModuleInit = (context: IContext) => Promise<IModuleBundle>;
 export class Registry {
   private static instance: Registry;
   private modules = new Map<string, IModuleBundle>();
-  private widgetIndex = new Map<string, IWidgetDescriptor>();
   private stateIndex = new Map<string, unknown>();
+  private routeIndex = new Map<string, IRouteDescriptor>();
 
   register(bundle: IModuleBundle): void {
     this.modules.set(bundle.id, bundle);
-    for (const wd of bundle.widgetDescriptors ?? []) {
-      this.widgetIndex.set(wd.id, wd);
-    }
     for (const [key, val] of Object.entries(bundle.state ?? {})) {
       this.stateIndex.set(key, val);
+    }
+    for (const route of bundle.routes ?? []) {
+      this.routeIndex.set(route.path, route);
     }
   }
 
@@ -130,9 +120,8 @@ export class Registry {
     return this.stateIndex.get(key) as T;
   }
 
-  getWidgetDescriptors(location?: string): IWidgetDescriptor[] {
-    const all = [...this.widgetIndex.values()];
-    return location ? all.filter(w => w.location === location) : all;
+  getRoutes(): IRouteDescriptor[] {
+    return [...this.routeIndex.values()];
   }
 }
 ```
@@ -168,35 +157,11 @@ Each module's `init(context)` function:
 
 ### 3. Registration Phase
 
-The Registry stores the bundle, indexing widget descriptors and state instances.
+The Registry stores the bundle, indexing state instances and route descriptors.
 
 ### 4. Runtime Integration
 
-The Shell UI maps widget descriptor IDs to **framework-specific components defined in the consuming app**:
-
-```typescript
-// apps/sveltekit-appshell/src/lib/widgetRegistry.ts
-// SvelteKit example — maps descriptor IDs to Svelte components
-import WatchlistWidget from '$lib/widgets/WatchlistWidget.svelte';
-import PortfolioWidget from '$lib/widgets/PortfolioWidget.svelte';
-
-export const widgetComponentMap: Record<string, ComponentType> = {
-  'watchlist-widget': WatchlistWidget,
-  'portfolio-widget': PortfolioWidget,
-};
-```
-
-```tsx
-// apps/nextjs-appshell/src/lib/widgetRegistry.tsx
-// NextJS example — maps descriptor IDs to React components
-import { WatchlistWidget } from '@/components/WatchlistWidget';
-import { PortfolioWidget } from '@/components/PortfolioWidget';
-
-export const widgetComponentMap: Record<string, React.ComponentType> = {
-  'watchlist-widget': WatchlistWidget,
-  'portfolio-widget': PortfolioWidget,
-};
-```
+The consuming app pulls state from the Registry and wires it into its own UI components. The module has no knowledge of how or where it is rendered.
 
 ---
 
@@ -209,19 +174,18 @@ import { watchlistState } from './states/WatchlistState';
 export const init: ModuleInit = async (_context) => {
   return {
     id: '[module_name]',
-    widgetDescriptors: [
-      {
-        id: 'watchlist-widget',
-        title: 'My Watchlist',
-        location: 'dashboard',
-        size: 'medium',
-      },
-    ],
     state: {
-      watchlistState,         // State instance — no Svelte/React dependency
+      watchlistState,  // State instance — no UI framework dependency
     },
     routes: [
-      { path: '/watchlist', widgetId: 'watchlist-widget' },
+      { path: '/watchlist' },
+    ],
+    handlers: [
+      {
+        id: 'refresh-watchlist',
+        title: 'Refresh Watchlist',
+        execute: async () => watchlistState.fetch(),
+      },
     ],
   };
 };
@@ -424,9 +388,10 @@ class WatchlistService {
 | **State**           | State classes (TS, no UI kit)        | Reactivity wiring per framework      |
 | **API Client**      | Zodios / generated client            | —                                    |
 | **Schemas**         | Zod schemas (SSOT)                   | —                                    |
-| **Widget**          | Descriptor (id, title, location)     | Actual UI component                  |
 | **Routes**          | Path strings                         | Route handler / page component       |
+| **Handlers**        | Command definitions                  | Trigger (menu, keyboard, etc.)       |
 | **Backend**         | Go/Rust service + OpenAPI spec       | Server hosting + DI wiring           |
+| **UI / Widgets**    | —                                    | All components, layout, placement    |
 
 ## Module Workflow Tooling
 

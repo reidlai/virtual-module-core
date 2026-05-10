@@ -209,14 +209,18 @@ import type { ModuleInit } from 'virtual-module-core';
 export const init: ModuleInit = async (_context) => {
   return {
     id: '[module_name]',
-    widgetDescriptors: [
-      { id: '[module_name]-widget', title: '[Module] Widget', location: 'dashboard', size: 'medium' },
-    ],
     state: {
       [module]State,
     },
     routes: [
-      { path: '/[module_name]', widgetId: '[module_name]-widget' },
+      { path: '/[module_name]' },
+    ],
+    handlers: [
+      {
+        id: 'refresh-[module_name]',
+        title: 'Refresh [Module]',
+        execute: async () => [module]State.fetch(),
+      },
     ],
   };
 };
