@@ -1,6 +1,6 @@
 # Virtual Module Architecture
 
-**Primary Reference**: [APPSHELL-ARCHITECTURE.md](docs/APPSHELL-ARCHITECTURE.md) (Core System Design)
+**Primary Reference**: [APPSHELL-ARCHITECTURE.md](APPSHELL-ARCHITECTURE.md) (Core System Design)
 
 | Component            | Source Repository                                                         |
 | :------------------- | :------------------------------------------------------------------------ |
@@ -10,390 +10,613 @@
 
 ## Overview
 
-This document describes the **polyglot Virtual Module** pattern used to extend App Shell architecture. Based on the foundational principles defined in [APPSHELL-ARCHITECTURE.md](docs/APPSHELL-ARCHITECTURE.md), virtual modules (such as [Portfolio](https://github.com/reidlai/portfolio-virtmod) and [Watchlist](https://github.com/reidlai/watchlist-virtmod)) are developed as independent repositories and integrated as Git submodules. This architecture enables feature teams to build, test, and version modules independently while the host AppShell orchestrates them into a unified experience at runtime.
+A **Virtual Module** is a self-contained, independently-versioned package that provides:
 
-### Module Structure
+- **`frontend/`** — pure TypeScript state management, Zod schemas, and a generated API client. **No UI kit or framework UI components.** The consuming application (NextJS, SvelteKit, Flutter) provides its own UI layer and imports state from this package.
+- **`backend/`** — Go or Rust API implementation that satisfies the contract defined by the Zod schemas.
 
-Following the workspace standard defined in [`DEVELOPER-GUIDE.md`](https://github.com/reidlai/ta-workspace/blob/main/docs/DEVELOPER-GUIDE.md#architecture-summary):
+This separation means a single module's state and business logic can be consumed by **any supported frontend framework** without modification.
 
 ```mermaid
 flowchart TD
-    %% Subgraph for Host Application
-    subgraph HostApp ["Host Application (sveltekit-appshell)"]
+    %% Host Application
+    subgraph HostApp ["Consuming App (NextJS / SvelteKit)"]
         direction TB
         Loader["ModuleLoader<br/>(Discovery)"]
         Registry[["Registry / DI Container<br/>(Orchestration)"]]
         AppRouter["App Router"]
+        UIComponents["UI Components<br/>(App-owned, framework-specific)"]
     end
 
-    %% Subgraph for Virtual Module
-    subgraph VirtualModule ["Virtual Module (e.g. Portfolio)"]
+    %% Virtual Module
+    subgraph VirtualModule ["Virtual Module"]
         direction TB
         Init["init(context)<br/>(Initialization)"]
 
-        %% Frontend Layer
-        subgraph Frontend ["Frontend Layer (SvelteKit)"]
-            Widgets["Widgets<br/>(UI Components)"]
-            Pages["Pages<br/>(Routes)"]
-            Runes["Svelte Runes<br/>(.svelte.ts)"]
-        end
-
-        %% Shared Logic
-        subgraph Shared ["State Management (SvelteKit)"]
-            States["Svelte 5 Runes<br/>(State Classes)"]
+        subgraph Frontend ["frontend/ (TypeScript)"]
+            States["State Classes<br/>(framework-agnostic)"]
             Schemas["Zod Schemas<br/>(SSOT / Data Contract)"]
+            APIClient["API Client<br/>(Zodios / generated)"]
         end
 
-        %% Backend Layer
-        subgraph Backend ["Backend Layer (Go)"]
-            GoService["Go Service<br/>(Implementation)"]
-            GoaDSL["Goa DSL<br/>(API Definition)"]
-            OpenAPI["OpenAPI Spec<br/>(Generated)"]
+        subgraph Backend ["backend/ (Go / Rust)"]
+            GoService["Service<br/>(Implementation)"]
+            GoaDSL["Goa DSL / OpenAPI<br/>(API Definition)"]
         end
     end
 
-    %% Lifecycle & Wiring
+    %% Lifecycle
     Loader -- "Discovers & Loads" --> Init
-    Init -- "Returns Bundle" --> Registry
-    Registry -- "Mounts" --> Widgets
-    Registry -- "Registers" --> Pages
-    AppRouter -- "Routes To" --> Pages
-    Registry -- "Provides Deps" --> Services
+    Init -- "Returns IModuleBundle" --> Registry
+    Registry -- "Provides state to" --> UIComponents
+    AppRouter -- "Routes to" --> UIComponents
 
-    %% Internal Module Flow
-    States -- "Validates vs" --> Schemas
-    States -- "Reactive Updates" --> Widgets
+    %% Internal flow
+    States -- "Calls" --> APIClient
+    APIClient -- "Validated by" --> Schemas
     Schemas -- "Mapped to" --> GoaDSL
     GoaDSL -- "Generates" --> GoService
-    GoaDSL -- "Generates" --> OpenAPI
+    GoaDSL -. "Verified against" .-> Schemas
 
-    %% Contract Verification Loop
-    OpenAPI -. "Verified against" .-> Schemas
-
-    %% Styling
     style HostApp fill:#f0f4f8,stroke:#334155,stroke-width:2px,color:#1e293b
     style VirtualModule fill:#f0fdf4,stroke:#166534,stroke-width:2px,color:#14532d
     style Frontend fill:#dbeafe,stroke:#1e40af,stroke-dasharray: 5 5
-    style Shared fill:#ffedd5,stroke:#c2410c,stroke-dasharray: 5 5
     style Backend fill:#e0e7ff,stroke:#4338ca,stroke-dasharray: 5 5
 ```
 
+---
+
+## Module Directory Structure
+
 ```
 [module_name]/
-├── go/                              # Backend Layer (Goa)
-│   ├── design/                      # Goa DSL (defines API contract)
-│   ├── goa_gen/                     # Generated Goa code
-│   ├── pkg/                         # Service implementations (Business Logic)
-│   └── moon.yml                     # Go project tasks
-├── sveltekit/                       # UI Layer (SvelteKit)
+├── frontend/                        # TypeScript state management (no UI kit)
 │   ├── src/
-│   │   ├── lib/
-│   │   │   ├── api-client/          # Generated Zodios API client
-│   │   │   ├── components/ui/       # ShadCN Svelte components
-│   │   │   ├── widgets/             # Reusable UI widgets (Registry-bound)
-│   │   │   └── states/              # Svelte 5 Runes state classes
-│   │   └── routes/                  # SvelteKit routes (Module-specific pages)
+│   │   ├── states/                  # State classes (Svelte 5 Runes or plain TS)
+│   │   │   └── [Module]State.svelte.ts
+│   │   ├── api-client/              # Generated Zodios client + Zod schemas
+│   │   │   └── index.ts
+│   │   ├── types/                   # Shared domain types
+│   │   │   └── index.ts
+│   │   └── index.ts                 # Module entry point (exports init + state)
 │   ├── package.json
-│   └── moon.yml                     # Svelte project tasks
-└── moon.yml                         # Module root aggregated tasks
-
-Dependency Flow: sveltekit ← go (one-way, no circular dependencies)
+│   └── moon.yml
+├── backend/                         # Go (or Rust) API implementation
+│   ├── design/                      # Goa DSL (API contract)
+│   ├── goa_gen/                     # Generated Goa transport layer
+│   ├── pkg/                         # Service implementations (business logic)
+│   ├── cmd/                         # Entrypoint binaries (if standalone)
+│   ├── internal/                    # Internal-only helpers
+│   ├── go.mod
+│   └── moon.yml
+└── moon.yml                         # Aggregated module tasks
 ```
 
-**Key Principles**:
-
-- **API client in `sveltekit/src/lib/api-client/`**: Generated Zodios client with Zod schemas
-- **State Classes in `sveltekit/src/lib/states/`**: Use Svelte 5 Runes (`$state`, `$derived`) for reactive state management
-- **RES Client Synchronization**: Modules can ingest a pre-authenticated `resClient` from the `AppShell` to enable real-time state synchronization via Resgate.
-
-## Integration Model
-
-### Git Submodule Integration
-
-Virtual Modules are developed as **independent Git repositories** and integrated into the host platform ([reidlai/ta-workspace](https://github.com/reidlai/ta-workspace)) as Git submodules.
-
-**Integration Steps**:
-
-1. **Add as Submodule** (from workspace root):
-   ```bash
-   git submodule add git@github.com:reidlai/[module_name]-virtmod.git modules/[module_name]
-   git submodule update --init --recursive
-   ```
-
-2. **Configure Workspace**:
-   To ensure the host AppShell and build system can see the new module, updates are required in three key configuration files:
-   - **`.moon/workspace.yml`**: Add the module's sub-projects to the `projects` map (e.g., `modules/[module_name]/go`, `modules/[module_name]/sveltekit`).
-   - **`pnpm-workspace.yaml`**: Add the module's sveltekit path (e.g., `modules/[module_name]/sveltekit`) to include its packages in the pnpm workspace.
-   - **`go.work`**: Add the backend path (e.g., `./modules/[module_name]/go`) to the Go workspace for cross-module development.
-
-3. **Install & Sync**:
-   ```bash
-   pnpm install
-   moon sync
-   ```
-
-### Runtime Integration (Module Registry)
-
-Modules are **NOT** standalone services. They provide artifacts that are statically or dynamically integrated:
-- **Backend**: Go services are instantiated and passed into the host server via Dependency Injection.
-- **Frontend**: The `ModuleLoader` discovers the module entry point (`index.ts`), and the module's `init()` function registers its widgets, handlers, and routes with the **`Registry`**. During this phase, the AppShell can provide a shared `resClient` instance for real-time synchronization.
+**Dependency rule**: `frontend/` depends on the backend only via HTTP/gRPC (the API client). No circular dependencies.
 
 ---
 
 ## Component Boundaries
 
-The architecture follows a strict **UI-First** design flow: `UI (Svelte)` → `API Contract (Schema)` → `Reactive State (Svelte 5 Runes)` → `Implementation (Go)`.
+### 1. `frontend/` — State Management (No UI Kit)
 
-### 1. Frontend Layer (SvelteKit)
-
-**Role**: Presentation and User Interaction.
-**Reactivity**: Uses **Svelte 5 Runes** for predictable, high-performance UI state.
+**Role**: Business logic, reactive state, data validation, API integration.  
+**Must not**: Import any UI framework components, UI kit libraries (ShadCN, Mantine, Tailwind components, etc.), or framework-specific rendering primitives.  
+**May use**: Svelte 5 Runes (since Svelte compiles to plain JS and the state targets SvelteKit as primary consumer), Zod, Zodios, and standard TypeScript utilities.
 
 #### State Class Pattern
-Business logic and API integration lives in **State Classes** using Svelte 5 Runes (`$state`, `$derived`).
 
 ```typescript
-// modules/[module_name]/sveltekit/src/lib/states/[Module]State.svelte.ts
-import { api } from "$lib/api-client";
+// frontend/src/states/[Module]State.svelte.ts
+import { api } from '$lib/api-client';
+import type { Item } from '../types';
 
 export class [Module]State {
-  // Svelte 5 Reactive State
-  data = $state<any>(null);
+  data = $state<Item[]>([]);
   loading = $state(false);
   error = $state<string | null>(null);
 
-  // Derived state
-  isReady = $derived(this.data !== null);
+  isReady = $derived(this.data.length > 0);
 
   async fetch() {
     this.loading = true;
     this.error = null;
     try {
-      this.data = await api.get("/[module]");
+      this.data = await api.listItems();
     } catch (e) {
-      this.error = e instanceof Error ? e.message : "Unknown error";
+      this.error = e instanceof Error ? e.message : 'Unknown error';
     } finally {
       this.loading = false;
     }
   }
 }
+
 export const [module]State = new [Module]State();
 ```
 
-**Boundaries**:
-- State classes integrate directly with the API client (Zodios).
-- UI components use `$props()` to support Dependency Injection and testability.
+If the module must support **both** SvelteKit and NextJS without Svelte Runes:
 
-### 2. API Client & Schemas (SvelteKit)
+```typescript
+// frontend/src/states/[Module]State.ts  (plain TypeScript, no Runes)
+import { api } from './api-client';
+import type { Item } from './types';
 
-**Role**: Single Source of Truth (SSOT), Data Validation.
-**Tooling**: Zod + Zodios.
+type Subscriber = (state: [Module]StateSnapshot) => void;
 
-The API client and schemas are colocated in the SvelteKit layer for simpler dependency management.
+export class [Module]State {
+  private _data: Item[] = [];
+  private _loading = false;
+  private _subscribers: Subscriber[] = [];
 
-**Pattern**: SSOT + Zodios Client
-- **`sveltekit/src/lib/api-client/`**: Contains the generated Zodios client with Zod schemas.
-- **`sveltekit/src/lib/states/`**: Contains Svelte 5 Runes state classes that manage reactive state.
+  get data() { return this._data; }
+  get loading() { return this._loading; }
 
-**Boundaries**:
-- Validates all incoming data via Zod automatically through Zodios.
-- State classes encapsulate API calls and reactive state management.
+  subscribe(fn: Subscriber) {
+    this._subscribers.push(fn);
+    return () => { this._subscribers = this._subscribers.filter(s => s !== fn); };
+  }
 
-### 3. Backend Layer (Go)
+  private notify() {
+    const snap = { data: this._data, loading: this._loading };
+    for (const fn of this._subscribers) fn(snap);
+  }
 
-**Role**: Persistence, Business Logic, and Contract Fulfillment.
-**Tooling**: Goa.
+  async fetch() {
+    this._loading = true;
+    this.notify();
+    this._data = await api.listItems();
+    this._loading = false;
+    this.notify();
+  }
+}
 
-The backend satisfies the API contract derived from the Shared Logic layer.
-
-**Pattern**: Design-First with OpenAPI Verification
-- **`go/design/`**: Defines the API and data types using Goa DSL (mapped from Zod schemas).
-- **`go/pkg/`**: Implements the service interface generated by Goa.
-- **OpenAPI Loop**: The generated `openapi3.json` is verified against the Zod schemas in the Shared Logic layer to ensure full contract alignment (Loop Closure).
-
-**Boundaries**:
-- No knowledge of the frontend; purely implements the transport-agnostic interface defined in the design.
-- Persistence and infrastructure (logging, DB) are provided via Dependency Injection from the host AppShell.
-
-## Dependency Management
-
-### Go Dependencies
-
-```go
-// go.mod
-module github.com/reidlai/ta-workspace/modules/portfolio/go
-
-require (
-    goa.design/goa/v3 v3.23.4
-    // Host app provides: logger, DB, config
-)
+export const [module]State = new [Module]State();
 ```
 
-**Pattern**: Dependency Injection
+#### API Client & Schemas
 
-- Module declares interfaces
-- Host app provides implementations
+```typescript
+// frontend/src/api-client/index.ts
+import { makeApi, Zodios } from '@zodios/core';
+import { z } from 'zod';
 
-### Node Dependencies
+export const ItemSchema = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  createdAt: z.string().datetime(),
+});
+export type Item = z.infer<typeof ItemSchema>;
 
-```json
-// sveltekit/package.json
-{
-  "dependencies": {
-    "@core/types": "workspace:*" // From host
+const api = makeApi([
+  {
+    method: 'get',
+    path: '/items',
+    alias: 'listItems',
+    response: z.array(ItemSchema),
+  },
+]);
+
+export const apiClient = new Zodios('/api', api);
+```
+
+#### Module Entry Point
+
+```typescript
+// frontend/src/index.ts
+import { [module]State } from './states/[Module]State.svelte';
+import type { ModuleInit } from 'virtual-module-core';
+
+export const init: ModuleInit = async (_context) => {
+  return {
+    id: '[module_name]',
+    widgetDescriptors: [
+      { id: '[module_name]-widget', title: '[Module] Widget', location: 'dashboard', size: 'medium' },
+    ],
+    state: {
+      [module]State,
+    },
+    routes: [
+      { path: '/[module_name]', widgetId: '[module_name]-widget' },
+    ],
+  };
+};
+
+// Also export state for direct import by consuming apps
+export { [module]State } from './states/[Module]State.svelte';
+export type { Item } from './api-client';
+```
+
+---
+
+### 2. `backend/` — Go / Rust API
+
+**Role**: Persistence, business logic, and contract fulfillment.  
+**Must not**: Import frontend types or UI state.
+
+#### Goa DSL (Go)
+
+```go
+// backend/design/design.go
+var _ = Service("[module_name]", func() {
+    Method("list", func() {
+        Payload(func() {
+            Attribute("user_id", String)
+            Required("user_id")
+        })
+        Result(ArrayOf(Item))
+        HTTP(func() {
+            GET("/[module_name]")
+            Header("user_id:X-User-ID")
+        })
+    })
+})
+
+var Item = Type("Item", func() {
+    Attribute("id", String)
+    Attribute("symbol", String)
+    Attribute("created_at", String, func() { Format(FormatDateTime) })
+    Required("id", "symbol", "created_at")
+})
+```
+
+#### Service Implementation
+
+```go
+// backend/pkg/service.go
+type [module]Svc struct {
+    db     DB
+    logger Logger
+}
+
+func New[Module]Service(db DB, logger Logger) *[module]Svc {
+    return &[module]Svc{db: db, logger: logger}
+}
+
+func (s *[module]Svc) List(ctx context.Context, p *gen.ListPayload) ([]*gen.Item, error) {
+    return s.db.Query(ctx, p.UserID)
+}
+```
+
+---
+
+## Integration into Consuming Apps
+
+### SvelteKit Integration
+
+Import state from the module's `frontend/` package and use it directly — Svelte 5 Runes are reactive without extra wiring.
+
+```svelte
+<!-- apps/sveltekit-appshell/src/lib/widgets/[Module]Widget.svelte -->
+<script lang="ts">
+  import { registry } from '$lib/registry';
+  import type { [Module]State } from '@my-org/[module_name]-virtmod/frontend';
+
+  const state = registry.getState<[Module]State>('[module]State');
+  $effect(() => { state.fetch(); });
+</script>
+
+{#if state.loading}
+  <p>Loading…</p>
+{:else}
+  {#each state.data as item}
+    <div>{item.symbol}</div>
+  {/each}
+{/if}
+```
+
+Register the widget component in the app's widget map:
+
+```typescript
+// apps/sveltekit-appshell/src/lib/widgetRegistry.ts
+import [Module]Widget from '$lib/widgets/[Module]Widget.svelte';
+
+export const widgetComponentMap = {
+  '[module_name]-widget': [Module]Widget,
+};
+```
+
+### NextJS Integration
+
+Use `useSyncExternalStore` to subscribe to the module's plain TypeScript state:
+
+```typescript
+// apps/nextjs-appshell/src/hooks/use[Module].ts
+import { useSyncExternalStore } from 'react';
+import { [module]State } from '@my-org/[module_name]-virtmod/frontend';
+
+export function use[Module]() {
+  const data = useSyncExternalStore(
+    [module]State.subscribe,
+    () => [module]State.data,
+  );
+  return { data, loading: [module]State.loading, fetch: [module]State.fetch };
+}
+```
+
+```tsx
+// apps/nextjs-appshell/src/components/[Module]Widget.tsx
+'use client';
+import { useEffect } from 'react';
+import { use[Module] } from '../hooks/use[Module]';
+
+export function [Module]Widget() {
+  const { data, loading, fetch } = use[Module]();
+  useEffect(() => { fetch(); }, []);
+
+  if (loading) return <div>Loading…</div>;
+  return (
+    <ul>
+      {data.map(item => <li key={item.id}>{item.symbol}</li>)}
+    </ul>
+  );
+}
+```
+
+Register the widget component:
+
+```typescript
+// apps/nextjs-appshell/src/lib/widgetRegistry.tsx
+import { [Module]Widget } from '@/components/[Module]Widget';
+
+export const widgetComponentMap = {
+  '[module_name]-widget': [Module]Widget,
+};
+```
+
+### Flutter Integration
+
+Flutter consumes the module's **backend API** directly (not the TypeScript `frontend/` package). Generate a Dart client from the module's OpenAPI spec:
+
+```bash
+# Generate Dart client from the module's OpenAPI spec
+openapi-generator generate \
+  -i modules/[module_name]/backend/goa_gen/http/openapi3.json \
+  -g dart-dio \
+  -o packages/[module_name]_client
+```
+
+```dart
+// apps/flutter-appshell/lib/services/[module]_service.dart
+import 'package:rxdart/rxdart.dart';
+import 'package:[module_name]_client/[module_name]_client.dart';
+
+class [Module]Service {
+  final _client = [Module]Client();
+  final _items$ = BehaviorSubject<List<Item>>.seeded([]);
+
+  Stream<List<Item>> get items$ => _items$.stream;
+
+  Future<void> fetch() async {
+    final items = await _client.listItems();
+    _items$.add(items);
+  }
+
+  void dispose() => _items$.close();
+}
+```
+
+```dart
+// apps/flutter-appshell/lib/widgets/[module]_widget.dart
+import 'package:flutter/material.dart';
+import '../services/[module]_service.dart';
+
+class [Module]Widget extends StatelessWidget {
+  final [Module]Service service;
+  const [Module]Widget({required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Item>>(
+      stream: service.items$,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const CircularProgressIndicator();
+        return ListView(
+          children: snapshot.data!.map((item) => ListTile(title: Text(item.symbol))).toList(),
+        );
+      },
+    );
   }
 }
 ```
 
-**Pattern**: Workspace Protocol
+---
 
-- Shared types via monorepo workspace
-- No version conflicts
+## Integration Model
 
-## Security Model
+### Git Submodule Integration
 
-### Threat Surface
+Virtual Modules are developed as **independent Git repositories** and integrated into the host workspace as Git submodules.
 
-The module inherits the host app's security posture:
+```bash
+# Add module
+git submodule add git@github.com:reidlai/[module_name]-virtmod.git modules/[module_name]
+git submodule update --init --recursive
 
-- **Authentication**: Host's session middleware
-- **Authorization**: Host's RBAC policies
-- **Data Access**: Host's DB connection pool
-- **Network**: Host's TLS termination
+# Configure workspace files
+# .moon/workspace.yml — add modules/[module_name]/frontend and modules/[module_name]/backend
+# pnpm-workspace.yaml — add modules/[module_name]/frontend
+# go.work — add ./modules/[module_name]/backend
 
-### Threat Modeling
+pnpm install
+moon sync
+```
 
-See `threat_modelling/tm.py` for PyTM model:
+### Runtime Integration
 
-- Assumes trusted host environment
-- No direct external exposure
-- Data flows through host's API gateway
+Modules are **not** standalone services. They provide artifacts compiled into the host:
+
+- **Backend**: The module's Go service is imported and compiled into the host server binary.
+- **Frontend**: The `ModuleLoader` imports the module's `frontend/` package, calls `init()`, and the Registry stores the returned bundle. The consuming app's UI components then access state via the Registry.
 
 ---
 
 ## UI-First Development Workflow
 
-**Primary Reference**: [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md)
+This module follows a phased **UI-First** design philosophy. Backend implementation only begins after the data contract is validated in isolation.
 
-This module follows a strictly phased **UI-First** design philosophy. Backend implementation only begins after UI behaviors and data contracts are validated in isolation.
+### Step 1: Define Domain Types
 
-### The 9-Step Sequence
+```typescript
+// frontend/src/types/index.ts
+export interface Item {
+  id: string;
+  symbol: string;
+  createdAt: string;
+}
+```
 
-#### Step 1: Create UI Components
-- **Path**: `sveltekit/src/lib/widgets/[WidgetName].svelte`
-- **Goal**: Build the UI using **ShadCN Svelte** and Svelte 5 `$state`. Use hardcoded local variables initially to focus on layout and UX.
+### Step 2: Create State Class with Mock Data
 
-#### Step 2: Create Local Types for Storybook
-- **Path**: `sveltekit/src/lib/widgets/[WidgetName].types.ts`
-- **Goal**: Define the interfaces required to drive the UI. This acts as the initial "Design Contract".
+```typescript
+// frontend/src/states/[Module]State.svelte.ts
+export class [Module]State {
+  data = $state<Item[]>([
+    { id: '1', symbol: 'AAPL', createdAt: new Date().toISOString() }, // Mock
+  ]);
+  loading = $state(false);
+}
+```
 
-#### Step 3: Create Storybook Scenarios
-- **Path**: `sveltekit/src/lib/widgets/[WidgetName].stories.ts`
-- **Goal**: Create various scenarios (Loading, Empty, Data, Error) with sample data. Validate the component's look and feel with stakeholders.
+### Step 3: Integrate into Consuming App for Validation
 
-#### Step 4: Define State Classes (Svelte 5 Runes)
-- **Path**: `sveltekit/src/lib/states/[Module]State.svelte.ts`
-- **Goal**: Define the state classes that will hold the data. Use `$state`, `$derived` to support SvelteKit's reactivity model.
+Import the state into the consuming SvelteKit or NextJS app. Validate UX with stakeholders using mock data — no backend required.
 
-#### Step 5: Create Goa Design DSL
-- **Path**: `go/design/design.go`
-- **Goal**: Formalize the design contract in Go. Define services, methods, and types using Goa DSL, ensuring they align with the requirements identified in Step 2.
+### Step 4: Define Zod Schemas (SSOT)
 
-#### Step 6: Generate API Server Interface
-- **Command**: `moon run [module_name]-go:goa-gen`
-- **Goal**: Use Goa to generate the transport layer and the service interface in Golang.
+```typescript
+// frontend/src/api-client/schemas.ts
+export const ItemSchema = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  createdAt: z.string().datetime(),
+});
+```
 
-#### Step 7: Implement API Server
-- **Path**: `go/pkg/service.go`
-- **Goal**: Implement the business logic and persistence layer that satisfies the generated interface.
+### Step 5: Define Goa DSL in `backend/`
 
-#### Step 8: Generate TypeScript API Client
-- **Tooling**: Goa + Zodios
-- **Path**: `sveltekit/src/lib/api-client/index.ts`
-- **Goal**: Use the Goa-generated OpenAPI spec to generate a TypeScript client that supports **Zod schemas** and the **Zodios** API client. This ensures the frontend uses the exact same data contract as the backend.
+Map the Zod schema to a Goa design, ensuring type alignment.
 
-#### Step 9: Integrate State Classes and Client
-- **Path**: `sveltekit/src/lib/states/[Module]State.svelte.ts`
-- **Goal**: Integrate the API client with state classes. The state class calls the API client, which validates results via Zod automatically, and performs any necessary **payload transformations** before exposing reactive state to UI components.
+### Step 6: Generate Backend Interface
+
+```bash
+moon run [module_name]-backend:goa-gen
+```
+
+### Step 7: Implement Service
+
+```go
+// backend/pkg/service.go — implement generated interface
+```
+
+### Step 8: Generate TypeScript API Client
+
+```bash
+moon run [module_name]-frontend:gen-client
+# Reads backend/goa_gen/http/openapi3.json → writes frontend/src/api-client/index.ts
+```
+
+### Step 9: Replace Mock Data with Live API Client
+
+```typescript
+// frontend/src/states/[Module]State.svelte.ts — replace mock with api.listItems()
+```
 
 ---
 
 ## App Architecture Constraints
 
-### 1. Mockability
+### 1. No UI Kit in `frontend/`
 
-**Rule**: All external dependencies (Host APIs, DBs, Auth) MUST be mockable to support isolated development and testing.
+The `frontend/` package MUST NOT import any UI component library. UI components live in the consuming app.
 
-- **Go**: Services must depend on **Interfaces**, not concrete structs. Use the Goa-generated interfaces to ensure transport independence.
-- **State Classes**: State classes should support mock data mode for development without a live backend.
-- **Svelte**: Components must receive data through `$props()` or state classes to facilitate Storybook testing.
+- Allowed: `zod`, `@zodios/core`, `svelte` (for Runes), standard TypeScript
+- Prohibited: `shadcn-svelte`, `@radix-ui/*`, `@mantine/*`, Tailwind CSS component libraries, any rendering framework
 
-### 2. Dependency Injection
+### 2. Mockability
 
-**Rule**: No hardcoded instantiations of infrastructure clients within the core logic.
+All external dependencies (host APIs, DB, auth) MUST be mockable:
 
-- **Pattern**: Use Service Factories (e.g., `New[Module]Service(logger, db, deps...)`) to inject dependencies at the AppShell entry point.
-- **Frontend**: Register service instances with the **`Registry`** during the `init()` phase.
+- **Backend**: Services depend on interfaces, not concrete structs.
+- **State classes**: Support an optional mock data mode for development without a live backend.
+
+### 3. Dependency Injection
+
+No hardcoded infrastructure instantiation in core logic:
+
+- **Backend**: Use `New[Module]Service(logger, db)` factories.
+- **Frontend**: Export state instances; the AppShell provides context via `init(context)`.
 
 ---
 
 ## Testing Strategy
 
 ### Unit Tests
-Test each layer in isolation within the module directory.
 
 ```bash
-# Test Go logic
-moon run [module_name]-go:test
+# Test backend logic (no external services)
+moon run [module_name]-backend:test
 
-# Test UI Components and State Classes
-moon run [module_name]-sveltekit:test
+# Test state classes with mock API
+moon run [module_name]-frontend:test
 ```
 
 ### Integration Tests
-Test the module within the host AppShell context.
 
 ```bash
-# Test backend integration in the shell
+# Backend integration in the host server context
 moon run go-server:test
 
-# Test frontend integration in the shell
+# Frontend integration in the appshell context
 moon run sveltekit-appshell:test
 ```
 
 **Boundaries**:
-- **Unit Tests**: Mock all host dependencies (DB, logger, shell context).
-- **Integration Tests**: Use host's test fixtures and real internal registry routing.
+
+- **Unit Tests**: Mock all host dependencies (DB, logger, shell context). Mock API responses for state class tests.
+- **Integration Tests**: Use host test fixtures with real internal registry routing.
 
 ---
 
 ## Deployment
 
-### Build Artifacts
-Virtual Modules produce **no independent artifacts**. They are compiled/bundled into the host:
+Virtual Modules produce **no independent artifacts**:
 
-- **`go-server`**: The module's Go implementation is imported and compiled into the main server binary.
-- **`sveltekit-appshell`**: The module's Svelte widgets and TypeScript logic are bundled into the shell's frontend build.
+- **`backend/`**: Compiled into the host server binary via Go imports.
+- **`frontend/`**: Bundled into the host frontend build via pnpm workspace imports.
 
 ### Release Process
+
 1. Module changes are committed to the independent `[module_name]-virtmod` repository.
-2. The host workspace (`ta-workspace`) updates the Git submodule reference.
-3. Host CI rebuilds the shell binaries/bundles with the new module code.
+2. The host workspace updates the Git submodule reference.
+3. Host CI rebuilds shell binaries/bundles with the new module code.
 4. A single deployment of the host app includes all module updates.
+
+---
+
+## Security Model
+
+The module inherits the host app's security posture:
+
+- **Authentication**: Host's session middleware
+- **Authorization**: Host's RBAC policies
+- **Data Access**: Host's DB connection pool (injected via DI)
+- **Network**: Host's TLS termination
+
+See `threat_modelling/tm.py` for the PyTM model. The module assumes a trusted host environment with no direct external exposure.
 
 ---
 
 ## Migration Considerations
 
 ### From Standalone to Virtual Module
-If migrating an existing service:
-1. **Remove Main Entry**: Delete the `main.go`.
-2. **Implement Factory**: Convert logic to the service factory pattern with interface-based DI.
-3. **Externalize Infrastructure**: Remove DB schema ownership and auth middleware (rely on host injections).
-4. **Register with Shell**: Implement the `init()` entry point to register widgets and routes.
+
+1. Remove `main.go` (backend) / standalone app entry (frontend).
+2. Convert backend logic to factory pattern: `New[Module]Service(logger, db)`.
+3. Remove any UI kit components from the shared state layer — move them to the consuming app.
+4. Implement the `init()` entry point in `frontend/src/index.ts` to return `IModuleBundle`.
 
 ### Future Standalone Extraction
-If a module needs to become standalone:
-1. **Add Main Entry**: Create a new `main.go` and HTTP server setup.
-2. **Restore Infrastructure**: Re-add database migrations and auth middleware.
-3. **Expose Directly**: Convert internal Registry-bound widgets/routes into standard standalone pages.
+
+1. Add `main.go` / `cmd/` entrypoint and HTTP server setup.
+2. Re-add DB migrations and auth middleware.
+3. Create a standalone app that consumes the `frontend/` package instead of the Registry.
